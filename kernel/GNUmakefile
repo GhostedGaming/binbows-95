@@ -83,6 +83,7 @@ override CFLAGS += \
 # Internal C preprocessor flags that should not be changed by the user.
 override CPPFLAGS := \
     -I src \
+    -I include/arch/x86_64 \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
     $(CPPFLAGS) \
@@ -186,8 +187,15 @@ endif
 override HEADER_DEPS := $(addprefix obj-$(ARCH)/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 
 # Default target. This must come first, before header dependencies.
+# Modified to automatically clean before building
 .PHONY: all
-all: bin-$(ARCH)/$(OUTPUT)
+all: autoclean bin-$(ARCH)/$(OUTPUT)
+
+# Auto-clean target that runs before building
+.PHONY: autoclean
+autoclean:
+	@echo "Auto-cleaning before build..."
+	@rm -rf bin-$(ARCH) obj-$(ARCH)
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
