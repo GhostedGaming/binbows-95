@@ -101,7 +101,7 @@ void serial_printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
     
-    char buffer[32]; // Buffer for number conversions
+    char buffer[32];
     
     while (*format) {
         if (*format == '%') {

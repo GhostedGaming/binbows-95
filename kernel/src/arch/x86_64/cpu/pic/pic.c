@@ -1,4 +1,4 @@
-#include <pic.h>
+#include "pic.h"
 #include <serial.h>
 
 static uint16_t __pic_get_irq_reg(int ocw3) {
@@ -70,12 +70,10 @@ void IRQ_clear_mask(uint8_t IRQline) {
     uint16_t port;
     uint8_t value;
 
-    if (IRQline < 8)
-    {
+    if (IRQline < 8) {
         port = PIC1_DATA;
     }
-    else
-    {
+    else {
         port = PIC2_DATA;
         IRQline -= 8;
     }
@@ -94,21 +92,6 @@ void pic_enable_irq(uint8_t irq) {
         irq -= 8;
     }
     
-    value = inb(port) & ~(1 << irq);
-    outb(port, value);
-}
-
-void pic_disable_irq(uint8_t irq) {
-    uint16_t port;
-    uint8_t value;
-
-    if (irq < 8) {
-        port = 0x21; // Master PIC
-    } else {
-        port = 0xA1; // Slave PIC
-        irq -= 8;
-    }
-
     value = inb(port) & ~(1 << irq);
     outb(port, value);
 }

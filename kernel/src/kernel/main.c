@@ -3,6 +3,11 @@
 #include <stdbool.h>
 #include <limine.h>
 #include <serial.h>
+#include <idt.h>
+#include <gdt.h>
+#include <pic.h>
+#include <timer.h>
+#include <pc_speaker.h>
 
 __attribute__((used, section(".limine_requests")))
 static volatile LIMINE_BASE_REVISION(3);
@@ -19,57 +24,6 @@ static volatile LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER;
 
-void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
-    uint8_t *restrict pdest = (uint8_t *restrict)dest;
-    const uint8_t *restrict psrc = (const uint8_t *restrict)src;
-
-    for (size_t i = 0; i < n; i++) {
-        pdest[i] = psrc[i];
-    }
-
-    return dest;
-}
-
-void *memset(void *s, int c, size_t n) {
-    uint8_t *p = (uint8_t *)s;
-
-    for (size_t i = 0; i < n; i++) {
-        p[i] = (uint8_t)c;
-    }
-
-    return s;
-}
-
-void *memmove(void *dest, const void *src, size_t n) {
-    uint8_t *pdest = (uint8_t *)dest;
-    const uint8_t *psrc = (const uint8_t *)src;
-
-    if (src > dest) {
-        for (size_t i = 0; i < n; i++) {
-            pdest[i] = psrc[i];
-        }
-    } else if (src < dest) {
-        for (size_t i = n; i > 0; i--) {
-            pdest[i-1] = psrc[i-1];
-        }
-    }
-
-    return dest;
-}
-
-int memcmp(const void *s1, const void *s2, size_t n) {
-    const uint8_t *p1 = (const uint8_t *)s1;
-    const uint8_t *p2 = (const uint8_t *)s2;
-
-    for (size_t i = 0; i < n; i++) {
-        if (p1[i] != p2[i]) {
-            return p1[i] < p2[i] ? -1 : 1;
-        }
-    }
-
-    return 0;
-}
-
 // Halt and catch fire function.
 static void hcf(void) {
     for (;;) {
@@ -83,32 +37,41 @@ static void hcf(void) {
     }
 }
 
-// The following will be our kernel's entry point.
-// If renaming kmain() to something else, make sure to change the
-// linker script accordingly.
 void kmain(void) {
-    // Ensure the bootloader actually understands our base revision (see spec).
-    if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-        hcf();
-    }
 
-    // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1) {
-        hcf();
-    }
+    // FUCK THE FRAMEBUFFER
+    // we need interrupts
+    //if (LIMINE_BASE_REVISION_SUPPORTED == false) {
+    //    hcf();
+    //}
+    //
+    //if (framebuffer_request.response == NULL
+    // || framebuffer_request.response->framebuffer_count < 1) {
+    //    hcf();
+    //}
+    //
+    //struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    //
+    //for (size_t i = 0; i < 100; i++) {
+    //    volatile uint32_t *fb_ptr = framebuffer->address;
+    //    fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xffffff;
+    //}
 
-    // Fetch the first framebuffer.
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    gdt_init();
+    gdt_load();
+    serial_printf("GDT loaded\r\n");
 
-    // Note: we assume the framebuffer model is RGB with 32-bit pixels.
-    for (size_t i = 0; i < 100; i++) {
-        volatile uint32_t *fb_ptr = framebuffer->address;
-        fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xffffff;
-    }
+    idt_init();
+    install_exceptions();
+    init_timer_irq();
+    init_keyboard_irq();
+    idt_load();
+    init_pic();
 
-    serial_printf("Hello world!");
+    init_timer();
+    asm volatile ("sti");
 
-    // We're done, just hang...
+    beep(500, 25);
+
     hcf();
 }
