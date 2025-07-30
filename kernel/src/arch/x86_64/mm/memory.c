@@ -1,172 +1,14 @@
 #include <stdint.h>
-#include <stddef.h>
 #include <limine.h>
-#include "memory.h"
+#include <memory.h>
 
-#define HEAP_SIZE 4096 * 1024
-
-typedef struct block {
-    size_t size;
-    int is_free;
-    struct block* next;
-} block_t;
-
-static block_t* heap_start = NULL;
-static char heap_memory[HEAP_SIZE];
-
-__attribute__((used, section(".limine_requests")))
+__attribute__((used))
 static volatile struct limine_memmap_request memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = 0
 };
 
-void init_heap() {
-    heap_start = (block_t*)heap_memory;
-    heap_start->size = HEAP_SIZE - sizeof(block_t);
-    heap_start->is_free = 1;
-    heap_start->next = NULL;
-}
-
-static block_t* find_free_block(size_t size) {
-    block_t* current = heap_start;
-    
-    while (current) {
-        if (current->is_free && current->size >= size) {
-            return current;
-        }
-        current = current->next;
-    }
-    
-    return NULL;
-}
-
-static void split_block(block_t* block, size_t size) {
-    if (block->size > size + sizeof(block_t)) {
-        block_t* new_block = (block_t*)((char*)block + sizeof(block_t) + size);
-        new_block->size = block->size - size - sizeof(block_t);
-        new_block->is_free = 1;
-        new_block->next = block->next;
-        
-        block->size = size;
-        block->next = new_block;
-    }
-}
-
-static void coalesce() {
-    block_t* current = heap_start;
-    
-    while (current && current->next) {
-        if (current->is_free && current->next->is_free) {
-            current->size += current->next->size + sizeof(block_t);
-            current->next = current->next->next;
-        } else {
-            current = current->next;
-        }
-    }
-}
-
-void* malloc(size_t size) {
-    if (size == 0) return NULL;
-    
-    if (!heap_start) {
-        init_heap();
-    }
-    
-    block_t* block = find_free_block(size);
-    if (!block) {
-        return NULL;
-    }
-    
-    split_block(block, size);
-    
-    block->is_free = 0;
-    
-    return (char*)block + sizeof(block_t);
-}
-
-void free(void* ptr) {
-    if (!ptr) return;
-    
-    block_t* block = (block_t*)((char*)ptr - sizeof(block_t));
-    
-    block->is_free = 1;
-    
-    coalesce();
-}
-
-void* calloc(size_t num, size_t size) {
-    size_t total_size = num * size;
-    void* ptr = malloc(total_size);
-    
-    if (ptr) {
-        memset(ptr, 0, total_size);
-    }
-    
-    return ptr;
-}
-
-void* realloc(void* ptr, size_t size) {
-    if (!ptr) return malloc(size);
-    if (size == 0) {
-        free(ptr);
-        return NULL;
-    }
-    
-    block_t* block = (block_t*)((char*)ptr - sizeof(block_t));
-    
-    if (block->size >= size) {
-        return ptr;
-    }
-    
-    void* new_ptr = malloc(size);
-    if (new_ptr) {
-        size_t copy_size = (block->size < size) ? block->size : size;
-        memcpy(new_ptr, ptr, copy_size);
-        free(ptr);
-    }
-    
-    return new_ptr;
-}
-
-void print_heap_status() {
-    block_t* current = heap_start;
-    int block_count = 0;
-    size_t total_free = 0;
-    size_t total_allocated = 0;
-    
-    while (current) {
-        block_count++;
-        if (current->is_free) {
-            total_free += current->size;
-        } else {
-            total_allocated += current->size;
-        }
-        current = current->next;
-    }
-}
-
-void get_heap_stats(size_t* total_size, size_t* used_size, size_t* free_size) {
-    if (!heap_start) {
-        *total_size = *used_size = *free_size = 0;
-        return;
-    }
-    
-    *total_size = HEAP_SIZE;
-    *used_size = 0;
-    *free_size = 0;
-    
-    block_t* current = heap_start;
-    while (current) {
-        if (current->is_free) {
-            *free_size += current->size;
-        } else {
-            *used_size += current->size;
-        }
-        current = current->next;
-    }
-}
-
-// Memory utility functions (your existing ones are good)
+//====================Memory utilization functions====================
 void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;
     const uint8_t *restrict psrc = (const uint8_t *restrict)src;
@@ -209,59 +51,111 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     }
     return 0;
 }
+//====================Buddy Allocator================================
+#define MIN_ORDER 12  // 4 KiB
+#define MAX_ORDER 20  // 1 MiB
+#define MAX_BLOCKS (MAX_ORDER + 1)
 
+typedef struct BuddyBlock {
+    struct BuddyBlock* next;
+} BuddyBlock;
 
-int strcmp(const char *str1, const char *str2) {
-    if (!str1 || !str2) return str1 ? 1 : (str2 ? -1 : 0);
-    
-    while (*str1 && *str2 && *str1 == *str2) {
-        str1++;
-        str2++;
-    }
-    return (unsigned char)*str1 - (unsigned char)*str2;
+static BuddyBlock* free_lists[MAX_BLOCKS];
+static uint8_t* buddy_base;
+
+static int get_order(size_t size) {
+    size_t total = size;
+    int order = MIN_ORDER;
+    while ((1UL << order) < total && order <= MAX_ORDER)
+        order++;
+    return order;
 }
 
-int strlen(const char *str) {
-    if (!str) return 0;
-    
-    int len = 0;
-    while (str[len]) len++;
-    return len;
+static void* get_buddy(void* addr, int order) {
+    uintptr_t offset = (uintptr_t)addr - (uintptr_t)buddy_base;
+    uintptr_t buddy_offset = offset ^ (1UL << order);
+    return (void*)((uintptr_t)buddy_base + buddy_offset);
 }
 
-char *strncpy(char *dest, const char *src, int n) {
-    if (!dest || !src) return dest;
-    
-    int i;
-    for (i = 0; i < n && src[i]; i++) {
-        dest[i] = src[i];
-    }
-    for (; i < n; i++) {
-        dest[i] = '\0';
-    }
-    return dest;
+void buddy_init(void* base, size_t length) {
+    buddy_base = (uint8_t*)base;
+
+    for (int i = 0; i < MAX_BLOCKS; i++)
+        free_lists[i] = NULL;
+
+    // Align size down to MAX_ORDER
+    uintptr_t aligned_base = (uintptr_t)base;
+    size_t aligned_size = length & ~((1UL << MIN_ORDER) - 1);
+
+    int order = MAX_ORDER;
+    while ((1UL << order) > aligned_size)
+        order--;
+
+    BuddyBlock* block = (BuddyBlock*)aligned_base;
+    block->next = NULL;
+    free_lists[order] = block;
 }
 
-char *strcpy(char *dest, const char *src) {
-    if (!dest || !src) return dest;
-    
-    int i = 0;
-    while (src[i]) {
-        dest[i] = src[i];
-        i++;
+void* buddy_alloc(size_t size) {
+    int order = get_order(size);
+    int current = order;
+
+    while (current <= MAX_ORDER && free_lists[current] == NULL)
+        current++;
+
+    if (current > MAX_ORDER)
+        return NULL;
+
+    // Split blocks down
+    while (current > order) {
+        BuddyBlock* block = free_lists[current];
+        free_lists[current] = block->next;
+        current--;
+
+        uintptr_t addr = (uintptr_t)block;
+        BuddyBlock* buddy = (BuddyBlock*)(addr + (1UL << current));
+        buddy->next = NULL;
+
+        block->next = NULL;
+        free_lists[current] = buddy;
     }
-    dest[i] = '\0';
-    return dest;
+
+    BuddyBlock* block = free_lists[order];
+    free_lists[order] = block->next;
+    return (void*)block;
 }
 
-int strncmp(const char *s1, const char *s2, size_t n) {
-    if (!s1 || !s2) return s1 ? 1 : (s2 ? -1 : 0);
-    
-    while (n && *s1 && *s2 && *s1 == *s2) {
-        s1++;
-        s2++;
-        n--;
+void buddy_free(void* ptr, size_t size) {
+    int order = get_order(size);
+    uintptr_t addr = (uintptr_t)ptr;
+
+    while (order <= MAX_ORDER) {
+        void* buddy = get_buddy((void*)addr, order);
+
+        BuddyBlock** current = &free_lists[order];
+        BuddyBlock* prev = NULL;
+
+        while (*current) {
+            if (*current == (BuddyBlock*)buddy) {
+                if (prev)
+                    prev->next = (*current)->next;
+                else
+                    free_lists[order] = (*current)->next;
+
+                if ((uintptr_t)buddy < addr)
+                    addr = (uintptr_t)buddy;
+
+                order++;
+                goto try_merge;
+            }
+            prev = *current;
+            current = &(*current)->next;
+        }
+        break;
+    try_merge:;
     }
-    if (n == 0) return 0;
-    return (unsigned char)*s1 - (unsigned char)*s2;
+
+    BuddyBlock* block = (BuddyBlock*)addr;
+    block->next = free_lists[order];
+    free_lists[order] = block;
 }

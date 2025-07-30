@@ -5,6 +5,7 @@
 #include <serial.h>
 // #include "../../ps2_keyboard/keyboard.h"
 #include <timer.h>
+#include <io.h>
 
 // IDT definition
 __attribute__((aligned(0x10))) static idt_entry_t idt[256];

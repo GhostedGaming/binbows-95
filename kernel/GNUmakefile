@@ -84,6 +84,9 @@ override CFLAGS += \
 override CPPFLAGS := \
     -I src \
     -I include/arch/x86_64 \
+    -I uacpi/include \
+    -I uacpi/include/uacpi/platform \
+    -I uacpi/include/uacpi/internal \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
     $(CPPFLAGS) \
@@ -175,6 +178,20 @@ override LDFLAGS += \
 # Use "find" to glob all *.c, *.S, and *.asm files in the tree and obtain the
 # object and header dependency file names.
 override SRCFILES := $(shell find -L src cc-runtime/src -type f 2>/dev/null | LC_ALL=C sort)
+
+# Find uACPI source files - try common directory names
+override UACPI_SRCDIR := $(shell \
+    if [ -d "uacpi/source" ]; then echo "uacpi/source"; \
+    elif [ -d "uacpi/src" ]; then echo "uacpi/src"; \
+    elif [ -d "uacpi/kernel" ]; then echo "uacpi/kernel"; \
+    else echo ""; fi)
+
+# Add uACPI sources if found
+ifneq ($(UACPI_SRCDIR),)
+    override UACPI_SRCFILES := $(shell find -L $(UACPI_SRCDIR) -name "*.c" -type f 2>/dev/null | LC_ALL=C sort)
+    override SRCFILES += $(UACPI_SRCFILES)
+endif
+
 override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 ifeq ($(ARCH),x86_64)
@@ -185,6 +202,10 @@ ifeq ($(ARCH),x86_64)
 override OBJ += $(addprefix obj-$(ARCH)/,$(NASMFILES:.asm=.asm.o))
 endif
 override HEADER_DEPS := $(addprefix obj-$(ARCH)/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
+
+# uACPI library target
+UACPI_LIB := obj-$(ARCH)/libuacpi.a
+override UACPI_OBJS := $(addprefix obj-$(ARCH)/,$(UACPI_SRCFILES:.c=.c.o))
 
 # Default target. This must come first, before header dependencies.
 # Modified to automatically clean before building
@@ -199,6 +220,17 @@ autoclean:
 
 # Include header dependencies.
 -include $(HEADER_DEPS)
+
+# Build uACPI library if sources are found
+ifneq ($(UACPI_SRCDIR),)
+$(UACPI_LIB): $(UACPI_OBJS)
+	@echo "Creating uACPI library..."
+	@mkdir -p "$$(dirname $@)"
+	@ar rcs $@ $(UACPI_OBJS)
+
+# Make kernel depend on uACPI library
+bin-$(ARCH)/$(OUTPUT): $(UACPI_LIB)
+endif
 
 # Link rules for the final executable.
 bin-$(ARCH)/$(OUTPUT): GNUmakefile linker-scripts/$(ARCH).lds $(OBJ)
@@ -221,6 +253,15 @@ obj-$(ARCH)/%.asm.o: %.asm GNUmakefile
 	mkdir -p "$$(dirname $@)"
 	nasm $(NASMFLAGS) $< -o $@
 endif
+
+# Debug target to show what uACPI files were found
+.PHONY: debug-uacpi
+debug-uacpi:
+	@echo "uACPI source directory: $(UACPI_SRCDIR)"
+	@echo "uACPI source files found:"
+	@echo "$(UACPI_SRCFILES)" | tr ' ' '\n'
+	@echo "uACPI object files:"
+	@echo "$(UACPI_OBJS)" | tr ' ' '\n'
 
 # Remove object files and the final executable.
 .PHONY: clean
