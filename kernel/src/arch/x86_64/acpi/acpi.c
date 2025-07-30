@@ -2,7 +2,7 @@
 #include <uacpi/event.h>
 #include <serial.h>
 
-#define ENODEV 19;
+#define ENODEV 19
 
 int acpi_init(void) {
     /*
@@ -12,7 +12,7 @@ int acpi_init(void) {
      */
     uacpi_status ret = uacpi_initialize(0);
     if (uacpi_unlikely_error(ret)) {
-        serial_printf("uacpi_initialize error: %s\n", uacpi_status_to_string(ret));
+        serial_printf("uacpi_initialize error: %s", uacpi_status_to_string(ret));
         return -ENODEV;
     }
 
@@ -22,7 +22,7 @@ int acpi_init(void) {
      */
     ret = uacpi_namespace_load();
     if (uacpi_unlikely_error(ret)) {
-        serial_printf("uacpi_namespace_load error: %s\n", uacpi_status_to_string(ret));
+        serial_printf("uacpi_namespace_load error: %s", uacpi_status_to_string(ret));
         return -ENODEV;
     }
 
@@ -32,7 +32,7 @@ int acpi_init(void) {
      */
     ret = uacpi_namespace_initialize();
     if (uacpi_unlikely_error(ret)) {
-        serial_printf("uacpi_namespace_initialize error: %s\n", uacpi_status_to_string(ret));
+        serial_printf("uacpi_namespace_initialize error: %s", uacpi_status_to_string(ret));
         return -ENODEV;
     }
 
@@ -45,7 +45,7 @@ int acpi_init(void) {
      */
     ret = uacpi_finalize_gpe_initialization();
     if (uacpi_unlikely_error(ret)) {
-        serial_printf("uACPI GPE initialization error: %s\n", uacpi_status_to_string(ret));
+        serial_printf("uACPI GPE initialization error: %s", uacpi_status_to_string(ret));
         return -ENODEV;
     }
 

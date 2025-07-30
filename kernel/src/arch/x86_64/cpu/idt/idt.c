@@ -3,7 +3,7 @@
 #include <idt.h>
 #include <pic.h>
 #include <serial.h>
-// #include "../../ps2_keyboard/keyboard.h"
+#include <ps2_keyboard.h>
 #include <timer.h>
 #include <io.h>
 
@@ -103,7 +103,7 @@ void irq_handler(uint64_t irq_number) {
         case 33:
             write_serial("Keyboard IRQ received\n");
             // ^ Only uncomment if you need to debug ^
-            //keyboard_handler(NULL);
+            keyboard_handler(NULL);
             break;
         default:
             write_serial("Unhandled IRQ\n");

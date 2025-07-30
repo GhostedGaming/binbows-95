@@ -11,9 +11,16 @@
 #include <pc_speaker.h>
 #include <acpi.h>
 #include <memory.h>
+#include <ide.h>
+// If you dont know what #include does GETOUT!
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
+
+struct ide_device ide_devices[4];
+
+ide_channel_t channels[2];
+unsigned char ide_buf[2048];
 
 void kernel_main(void) {
     // Setup serial
@@ -44,14 +51,7 @@ void kernel_main(void) {
     
     // Print memory map for debugging
     serial_printf("Memory map entries:\n");
-    for (size_t i = 0; i < memmap_request.response->entry_count; i++) {
-        struct limine_memmap_entry* entry = memmap_request.response->entries[i];
-        serial_printf("Entry %u: base=0x%lx length=0x%lx type=%u\n",
-                     (unsigned int)i,
-                     (unsigned long)entry->base,
-                     (unsigned long)entry->length,
-                     (unsigned int)entry->type);
-    }
+
     
     // Find the largest usable memory region for buddy allocator
     uintptr_t usable_phys_base = 0;
@@ -99,8 +99,19 @@ void kernel_main(void) {
     // Now initialize buddy allocator with remaining memory
     buddy_init(buddy_base, buddy_size);
     serial_printf("Buddy allocator initialized\n");
-    
-    beep(500, 25);
+
+    //if (acpi_init() != 0) {
+    //    write_serial("ACPI Failed");
+    //}
+
+    ide_initialize(0, 0, 0, 0, 0);
+    for (int i = 0; i < 4; ++i) {
+        if (ide_devices[i].Reserved) {
+            serial_printf("Drive %d detected: %s\n", i, ide_devices[i].Model);
+        } else {
+            serial_printf("Nothing\n");
+        }
+    } // Atleast this isnt causing a fault so i dont really give a care in the world about what happens
     
     while (1) asm volatile ("hlt");
 }

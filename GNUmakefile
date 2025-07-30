@@ -29,12 +29,21 @@ run: run-$(ARCH)
 .PHONY: run-hdd
 run-hdd: run-hdd-$(ARCH)
 
+# New phony target to create the ide.img disk image if it doesn't exist
+.PHONY: ide-image
+ide-image:
+	@if [ ! -f ide.img ]; then \
+		echo "Creating ide.img (1GB raw disk image)..."; \
+		qemu-img create -f raw ide.img 1G; \
+	fi
+
 .PHONY: run-x86_64
-run-x86_64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
+run-x86_64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso ide-image # Added ide-image dependency
 	qemu-system-$(ARCH) \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(ARCH).fd,readonly=on \
 		-cdrom $(IMAGE_NAME).iso \
+		-drive id=disk,file=ide.img,format=raw,if=ide \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64
@@ -243,9 +252,9 @@ endif
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd ide.img # Added ide.img to clean
 
 .PHONY: distclean
 distclean:
 	$(MAKE) -C kernel distclean
-	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf
+	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img # Added ide.img to distclean
