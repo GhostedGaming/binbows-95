@@ -17,11 +17,6 @@
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
 
-struct ide_device ide_devices[4];
-
-ide_channel_t channels[2];
-unsigned char ide_buf[2048];
-
 void kernel_main(void) {
     // Setup serial
     init_serial();
@@ -104,14 +99,7 @@ void kernel_main(void) {
     //    write_serial("ACPI Failed");
     //}
 
-    ide_initialize(0, 0, 0, 0, 0);
-    for (int i = 0; i < 4; ++i) {
-        if (ide_devices[i].Reserved) {
-            serial_printf("Drive %d detected: %s\n", i, ide_devices[i].Model);
-        } else {
-            serial_printf("Nothing\n");
-        }
-    } // Atleast this isnt causing a fault so i dont really give a care in the world about what happens
+    ide_initialize();
     
     while (1) asm volatile ("hlt");
 }
