@@ -16,6 +16,7 @@
 #include <ide.h>
 #include <fat.h>
 #include <pci.h>
+#include <usb1.h>
 
 void kernel_main(void);
 

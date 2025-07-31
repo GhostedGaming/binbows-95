@@ -3,12 +3,19 @@
 #include <serial.h>
 #include <pci.h>
 
-static inline uint32_t pci_config_read_dword(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
+uint32_t pci_config_read_dword(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
     uint32_t address = (uint32_t)((bus << 16) | (device << 11) |
                                   (function << 8) | (offset & 0xFC) | 0x80000000);
     
     outl(0xCF8, address);
     return inl(0xCFC);
+}
+
+void pci_config_write_dword(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value) {
+    uint32_t address = (uint32_t)((bus << 16) | (device << 11) |
+                                  (function << 8) | (offset & 0xFC) | 0x80000000);
+    outl(0xCF8, address);
+    outl(0xCFC, value);
 }
 
 uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
@@ -73,4 +80,20 @@ void check_bus(uint8_t bus) {
 
 void check_all_buses(void) {
     check_bus(0);
+}
+
+void pci_config_write_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value) {
+    uint32_t data = pci_config_read_dword(bus, device, function, offset & 0xFC);
+    uint8_t shift = (offset & 2) * 8;
+    data &= ~(0xFFFF << shift);
+    data |= ((uint32_t)value << shift);
+    pci_config_write_dword(bus, device, function, offset & 0xFC, data);
+}
+
+void pci_config_write_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint8_t value) {
+    uint32_t data = pci_config_read_dword(bus, device, function, offset & 0xFC);
+    uint8_t shift = (offset & 3) * 8;
+    data &= ~(0xFF << shift);
+    data |= ((uint32_t)value << shift);
+    pci_config_write_dword(bus, device, function, offset & 0xFC, data);
 }

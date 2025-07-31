@@ -58,6 +58,7 @@ typedef struct {
     uint8_t  header_type;
 } pci_device_t;
 
+uint32_t pci_config_read_dword(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 uint8_t pci_config_read_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
 uint16_t get_vendor_id(uint8_t bus, uint8_t device, uint8_t function);
@@ -66,5 +67,7 @@ void check_function(uint8_t bus, uint8_t device, uint8_t function);
 void check_device(uint8_t bus, uint8_t device);
 void check_bus(uint8_t bus);
 void check_all_buses(void);
+void pci_config_write_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value);
+void pci_config_write_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint8_t value);
 
 #endif // PCI_H

@@ -108,7 +108,11 @@ void kernel_main(void) {
 
     serial_printf("Running PCI\n");
     check_all_buses();
-    serial_printf("PCI finished!");
+    serial_printf("PCI finished!\n");
+
+    serial_printf("Running uhci_init\n");
+    uhci_init();
+    serial_printf("uhci_init finished!\n");
 
     while (1) asm volatile ("hlt");
 }
