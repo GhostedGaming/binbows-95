@@ -50,13 +50,19 @@ run-x86_64: $(IMAGE_NAME).iso ide-image
 		-no-shutdown \
 		-s
 
-.PHONY: run-hdd-x86_64
-run-hdd-x86_64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(ARCH) \
-		-M q35 \
-		-drive if=pflash,unit=0,format=raw,file=ovmf/ovmf-code-$(ARCH).fd,readonly=on \
-		-hda $(IMAGE_NAME).hdd \
-		$(QEMUFLAGS)
+.PHONY: run-x86_64
+run-x86_64: $(IMAGE_NAME).iso ide-image
+	qemu-system-x86_64 \
+		-M pc \
+		-m 2G \
+		-cdrom $(IMAGE_NAME).iso \
+		-drive file=ide.img,format=raw,if=none,id=drive0 \
+		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
+		-device piix3-usb-uhci,id=uhci \
+		-serial stdio \
+		-no-reboot \
+		-no-shutdown \
+		-s
 
 .PHONY: run-aarch64
 run-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
