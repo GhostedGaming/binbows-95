@@ -1,44 +1,64 @@
-# Limine C Template
+# Binbows OS
 
-This repository will demonstrate how to set up a basic kernel in C using Limine.
+**Binbows** is a monolithic kernel operating system built from scratch with performance, learning, and extensibility in mind.
 
-## How to use this?
+> Started this project when I was 13 — and yes, I’m still 13 as I write this!
 
-### Dependencies
+---
 
-Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
+## 🚀 Overview
 
-It is recommended to build this project using a standard UNIX-like system, using a Clang/LLVM toolchain capable of cross compilation.
+Binbows is designed to be simple, fast, and educational. It aims to grow into a complete modern OS with support for multiple filesystems, device drivers, and userland applications. It’s a hobby project — but a serious one.
 
-Additionally, building an ISO with `make all` requires `xorriso`, and building a HDD/USB image with `make all-hdd` requires `sgdisk` (usually from `gdisk` or `gptfdisk` packages) and `mtools`.
+---
 
-### Toolchain selection
+## ✨ Features
 
-The `TOOLCHAIN` and `TOOLCHAIN_PREFIX` `make` variables can be used to set the toolchain. `TOOLCHAIN` can be set to `llvm` to use Clang/LLVM.
+- 🔹 **Buddy Allocator** — Efficient physical memory management.
+- 🔹 **Paging** — Virtual memory and memory protection.
+- ⌨️ **PS/2 Keyboard Driver** — Direct input handling from hardware.
+- ⚙️ **ACPI Support** — Basic system configuration and power interface.
+- 💾 **FAT16 Filesystem** — Read/write file access *(planned: ext4, NTFS, FAT32, etc.)*
+- 🔊 **PC Speaker Driver** — Simple audio output *(more sound features coming!)*
 
-For example:
-```
-make TOOLCHAIN=llvm
-```
-or:
-```
-make TOOLCHAIN_PREFIX=x86_64-elf-
-```
+---
 
-### Architectural targets
+## 🛠️ Roadmap
 
-The `ARCH` make variable determines the target architecture to build the kernel and image for.
+- [ ] ext4 & NTFS filesystem support  
+- [ ] Virtual File System (VFS) layer  
+- [ ] Sound Blaster / Audio drivers  
+- [ ] Tasking and process scheduling  
+- [ ] System calls and userspace  
+- [ ] Graphics driver & basic GUI  
+- [ ] Shell & command-line tools
 
-The default `ARCH` is `x86_64`. Other options include: `aarch64`, `loongarch64`, and `riscv64`.
+---
 
-### Makefile targets
+## 📚 Goals
 
-Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
+- Build a deeper understanding of operating systems
+- Create a clean and modular codebase
+- Learn C, assembly, and hardware-level programming
+- Have fun and share progress with others
 
-Running `make all-hdd` will compile the kernel and then generate a raw image suitable to be flashed onto a USB stick or hard drive/SSD.
+---
 
-Running `make run` will build the kernel and a bootable ISO (equivalent to make all) and then run it using `qemu` (if installed).
+## 🧩 Tech Stack
 
-Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
+- Language: **C** and **x86 Assembly**
+- Platform: **x86_64** (BIOS boot with Limine)
+- Tools: `make`, `qemu`, `nasm`, `ld`
 
-For x86_64, the `run-bios` and `run-hdd-bios` targets are equivalent to their non `-bios` counterparts except that they boot `qemu` using the default SeaBIOS firmware instead of OVMF.
+---
+
+## 💬 Contact
+
+Want to contribute, ask questions, or just say hi?  
+**Reach out here or open an issue. I'd love feedback from fellow OS devs!**
+
+---
+
+## 🧪 Disclaimer
+
+This is a learning project. Don’t expect Linux — yet 😎  
