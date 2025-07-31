@@ -84,9 +84,6 @@ override CFLAGS += \
 override CPPFLAGS := \
     -I src \
     -I include/arch/x86_64 \
-    -I uacpi/include \
-    -I uacpi/include/uacpi/platform \
-    -I uacpi/include/uacpi/internal \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
     $(CPPFLAGS) \
@@ -224,7 +221,7 @@ autoclean:
 # Build uACPI library if sources are found
 ifneq ($(UACPI_SRCDIR),)
 $(UACPI_LIB): $(UACPI_OBJS)
-	@echo "Creating uACPI library..."
+	@echo "Creating uACPI library $@ ..."
 	@mkdir -p "$$(dirname $@)"
 	@ar rcs $@ $(UACPI_OBJS)
 
@@ -234,24 +231,28 @@ endif
 
 # Link rules for the final executable.
 bin-$(ARCH)/$(OUTPUT): GNUmakefile linker-scripts/$(ARCH).lds $(OBJ)
-	mkdir -p "$$(dirname $@)"
-	$(LD) $(OBJ) $(LDFLAGS) -o $@
+	@echo "Linking final executable $@ ..."
+	@mkdir -p "$$(dirname $@)"
+	@$(LD) $(OBJ) $(LDFLAGS) -o $@
 
 # Compilation rules for *.c files.
 obj-$(ARCH)/%.c.o: %.c GNUmakefile
-	mkdir -p "$$(dirname $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	@echo "Compiling C source $< ..."
+	@mkdir -p "$$(dirname $@)"
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 # Compilation rules for *.S files.
 obj-$(ARCH)/%.S.o: %.S GNUmakefile
-	mkdir -p "$$(dirname $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	@echo "Compiling assembly source $< ..."
+	@mkdir -p "$$(dirname $@)"
+	@$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 ifeq ($(ARCH),x86_64)
 # Compilation rules for *.asm (nasm) files.
 obj-$(ARCH)/%.asm.o: %.asm GNUmakefile
-	mkdir -p "$$(dirname $@)"
-	nasm $(NASMFLAGS) $< -o $@
+	@echo "Assembling NASM source $< ..."
+	@mkdir -p "$$(dirname $@)"
+	@nasm $(NASMFLAGS) $< -o $@
 endif
 
 # Debug target to show what uACPI files were found
@@ -266,21 +267,25 @@ debug-uacpi:
 # Remove object files and the final executable.
 .PHONY: clean
 clean:
-	rm -rf bin-$(ARCH) obj-$(ARCH)
+	@echo "Removing binaries and objects..."
+	@rm -rf bin-$(ARCH) obj-$(ARCH)
 
 # Remove everything built and generated including downloaded dependencies.
 .PHONY: distclean
 distclean:
-	rm -rf bin-* obj-* freestnd-c-hdrs cc-runtime limine-protocol
+	@echo "Removing all build artifacts and dependencies..."
+	@rm -rf bin-* obj-* freestnd-c-hdrs cc-runtime limine-protocol
 
 # Install the final built executable to its final on-root location.
 .PHONY: install
 install: all
-	install -d "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
-	install -m 644 bin-$(ARCH)/$(OUTPUT) "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
+	@echo "Installing $(OUTPUT) to $(DESTDIR)$(PREFIX)/share/$(OUTPUT)/ ..."
+	@install -d "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
+	@install -m 644 bin-$(ARCH)/$(OUTPUT) "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
 
 # Try to undo whatever the "install" target did.
 .PHONY: uninstall
 uninstall:
-	rm -f "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
-	-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
+	@echo "Uninstalling $(OUTPUT) from $(DESTDIR)$(PREFIX)/share/$(OUTPUT)/ ..."
+	@rm -f "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
+	@-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"

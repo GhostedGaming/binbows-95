@@ -1,6 +1,10 @@
 #ifndef IDE_H
 #define IDE_H
 
+#include <io.h>
+#include <serial.h>
+#include <timer.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* ============================================================================
@@ -105,15 +109,17 @@ extern struct ide_device ide_devices[4];
 extern uint8_t ide_buf[512];
 
 /* ============================================================================
- * API
+ * FUNCTIONS
  * ============================================================================ */
 
+uint8_t ide_polling(uint8_t channel, uint8_t advanced_check);
+uint8_t ide_read(uint8_t channel, uint8_t reg);
 void ide_initialize(void);
+void ide_identify(uint8_t channel, uint8_t drive);
 void ide_wait_irq(uint8_t channel);
 void ide_read_buffer(uint8_t channel, uint8_t reg, void *buffer, uint32_t quads);
-uint8_t ide_read(uint8_t channel, uint8_t reg);
 void ide_write(uint8_t channel, uint8_t reg, uint8_t data);
-uint8_t ide_polling(uint8_t channel, uint8_t advanced_check);
 int ide_read_sectors(uint8_t drive, uint8_t numsects, uint32_t lba, void *buf);
+int ide_write_sectors(uint8_t drive, uint8_t numsects, uint32_t lba, const void *buf);
 
 #endif // IDE_H

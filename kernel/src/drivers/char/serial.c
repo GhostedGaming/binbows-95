@@ -6,21 +6,18 @@
 #define PORT 0x3F8 // COM1
 
 int init_serial(void) {
-    outb(PORT + 1, 0x00); // Disable all interrupts
-    outb(PORT + 3, 0x80); // Enable DLAB
-    outb(PORT + 0, 0x03); // Set divisor to 3 (lo byte)
-    outb(PORT + 1, 0x00); // (hi byte)
-    outb(PORT + 3, 0x03); // 8N1
-    outb(PORT + 2, 0xC7); // Enable FIFO, clear them
-    outb(PORT + 4, 0x0B); // IRQs enabled
-    outb(PORT + 4, 0x1E); // Loopback test
-    outb(PORT + 0, 0xAE); // Send test byte
-
-    if (inb(PORT + 0) != 0xAE) {
-        return 1; // Failed
-    }
-
-    outb(PORT + 4, 0x0F); // Normal mode
+    outb(PORT + 1, 0x00);
+    outb(PORT + 3, 0x80);
+    outb(PORT + 0, 0x03);
+    outb(PORT + 1, 0x00);
+    outb(PORT + 3, 0x03);
+    outb(PORT + 2, 0xC7);
+    outb(PORT + 4, 0x0B);
+    outb(PORT + 4, 0x1E);
+    outb(PORT + 0, 0xAE);
+    if (inb(PORT + 0) != 0xAE)
+        return 1;
+    outb(PORT + 4, 0x0F);
     return 0;
 }
 
@@ -29,230 +26,147 @@ static int is_transmit_empty(void) {
 }
 
 static void write_serial_char(char a) {
-    while (is_transmit_empty() == 0);
+    while (!is_transmit_empty());
     outb(PORT, a);
 }
 
 void write_serial(const char *str) {
-    while (*str) {
-        write_serial_char(*str++);
-    }
+    while (*str) write_serial_char(*str++);
 }
 
-// 32-bit signed int to string (decimal)
-static void int_to_string(int value, char *str, int base) {
-    char *ptr = str;
-    char *ptr1 = str;
-    char tmp_char;
-    int tmp_value;
+// Helper: print string with padding
+static void write_padded(const char *str, int width, char pad) {
+    int len = 0;
+    const char *s = str;
+    while (*s++) len++;
+    while (len < width--) write_serial_char(pad);
+    write_serial(str);
+}
 
-    if (value < 0 && base == 10) {
-        *ptr++ = '-';
-        value = -value;
-        ptr1++;
-    }
-
+static void utoa(unsigned long val, char *buf, int base) {
+    char *ptr = buf, *ptr1 = buf, tmp;
     do {
-        tmp_value = value;
-        value /= base;
-        *ptr++ = "0123456789abcdef"[tmp_value - value * base];
-    } while (value);
-
+        *ptr++ = "0123456789abcdef"[val % base];
+        val /= base;
+    } while (val);
     *ptr-- = '\0';
-
     while (ptr1 < ptr) {
-        tmp_char = *ptr;
+        tmp = *ptr;
         *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
+        *ptr1++ = tmp;
     }
 }
 
-// 32-bit unsigned int to string
-static void uint_to_string(unsigned int value, char *str, int base) {
-    char *ptr = str;
-    char *ptr1 = str;
-    char tmp_char;
-    unsigned int tmp_value;
-
-    do {
-        tmp_value = value;
-        value /= base;
-        *ptr++ = "0123456789abcdef"[tmp_value - value * base];
-    } while (value);
-
-    *ptr-- = '\0';
-
-    while (ptr1 < ptr) {
-        tmp_char = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
+static void itoa(long val, char *buf, int base) {
+    if (val < 0 && base == 10) {
+        *buf++ = '-';
+        utoa((unsigned long)(-val), buf, base);
+    } else {
+        utoa((unsigned long)val, buf, base);
     }
 }
 
-// 64-bit unsigned long to string
-static void ulong_to_string(unsigned long value, char *str, int base) {
-    char *ptr = str;
-    char *ptr1 = str;
-    char tmp_char;
-    unsigned long tmp_value;
-
-    do {
-        tmp_value = value;
-        value /= base;
-        *ptr++ = "0123456789abcdef"[tmp_value - value * base];
-    } while (value);
-
-    *ptr-- = '\0';
-
-    while (ptr1 < ptr) {
-        tmp_char = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
-    }
-}
-
-// 64-bit signed long to string (decimal)
-static void long_to_string(long value, char *str, int base) {
-    char *ptr = str;
-    char *ptr1 = str;
-    char tmp_char;
-    long tmp_value;
-
-    if (value < 0 && base == 10) {
-        *ptr++ = '-';
-        value = -value;
-        ptr1++;
-    }
-
-    do {
-        tmp_value = value;
-        value /= base;
-        *ptr++ = "0123456789abcdef"[tmp_value - value * base];
-    } while (value);
-
-    *ptr-- = '\0';
-
-    while (ptr1 < ptr) {
-        tmp_char = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp_char;
-    }
-}
-
-void serial_printf(const char *format, ...) {
+void serial_printf(const char *fmt, ...) {
     va_list args;
-    va_start(args, format);
-
+    va_start(args, fmt);
     char buffer[64];
 
-    while (*format) {
-        if (*format == '%') {
-            format++;
-            if (*format == 'l') {
-                // Handle 64-bit specifiers
-                format++;
-                switch (*format) {
-                    case 'd':
-                    case 'i': {
-                        long val = va_arg(args, long);
-                        long_to_string(val, buffer, 10);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'u': {
-                        unsigned long val = va_arg(args, unsigned long);
-                        ulong_to_string(val, buffer, 10);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'x': {
-                        unsigned long val = va_arg(args, unsigned long);
-                        ulong_to_string(val, buffer, 16);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'X': {
-                        unsigned long val = va_arg(args, unsigned long);
-                        ulong_to_string(val, buffer, 16);
-                        for (int i = 0; buffer[i]; i++) {
-                            if (buffer[i] >= 'a' && buffer[i] <= 'f')
-                                buffer[i] = buffer[i] - 'a' + 'A';
-                        }
-                        write_serial(buffer);
-                        break;
-                    }
-                    default:
-                        // Unknown, print literally
-                        write_serial_char('%');
-                        write_serial_char('l');
-                        write_serial_char(*format);
-                        break;
-                }
-            } else {
-                switch (*format) {
-                    case 'd':
-                    case 'i': {
-                        int val = va_arg(args, int);
-                        int_to_string(val, buffer, 10);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'u': {
-                        unsigned int val = va_arg(args, unsigned int);
-                        uint_to_string(val, buffer, 10);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'x': {
-                        unsigned int val = va_arg(args, unsigned int);
-                        uint_to_string(val, buffer, 16);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'X': {
-                        unsigned int val = va_arg(args, unsigned int);
-                        uint_to_string(val, buffer, 16);
-                        for (int i = 0; buffer[i]; i++) {
-                            if (buffer[i] >= 'a' && buffer[i] <= 'f')
-                                buffer[i] = buffer[i] - 'a' + 'A';
-                        }
-                        write_serial(buffer);
-                        break;
-                    }
-                    case 'c': {
-                        char c = (char)va_arg(args, int);
-                        write_serial_char(c);
-                        break;
-                    }
-                    case 's': {
-                        char *str = va_arg(args, char*);
-                        if (str)
-                            write_serial(str);
-                        else
-                            write_serial("(null)");
-                        break;
-                    }
-                    case 'p': {
-                        void *ptr = va_arg(args, void*);
-                        write_serial("0x");
-                        ulong_to_string((unsigned long)(uintptr_t)ptr, buffer, 16);
-                        write_serial(buffer);
-                        break;
-                    }
-                    case '%': {
-                        write_serial_char('%');
-                        break;
-                    }
-                    default: {
-                        write_serial_char('%');
-                        write_serial_char(*format);
-                        break;
-                    }
-                }
+    while (*fmt) {
+        if (*fmt == '%') {
+            fmt++;
+            char pad_char = ' ';
+            int width = 0;
+            int long_flag = 0;
+
+            // Parse flags
+            if (*fmt == '0') {
+                pad_char = '0';
+                fmt++;
             }
-            format++;
+
+            // Parse width
+            while (*fmt >= '0' && *fmt <= '9') {
+                width = width * 10 + (*fmt++ - '0');
+            }
+
+            // Check for long modifier
+            if (*fmt == 'l') {
+                long_flag = 1;
+                fmt++;
+            }
+
+            // Conversion specifier
+            switch (*fmt) {
+                case 'd':
+                case 'i': {
+                    if (long_flag) {
+                        long val = va_arg(args, long);
+                        itoa(val, buffer, 10);
+                    } else {
+                        int val = va_arg(args, int);
+                        itoa(val, buffer, 10);
+                    }
+                    write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'u': {
+                    if (long_flag) {
+                        unsigned long val = va_arg(args, unsigned long);
+                        utoa(val, buffer, 10);
+                    } else {
+                        unsigned int val = va_arg(args, unsigned int);
+                        utoa(val, buffer, 10);
+                    }
+                    write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'x':
+                case 'X': {
+                    if (long_flag) {
+                        unsigned long val = va_arg(args, unsigned long);
+                        utoa(val, buffer, 16);
+                    } else {
+                        unsigned int val = va_arg(args, unsigned int);
+                        utoa(val, buffer, 16);
+                    }
+                    if (*fmt == 'X') {
+                        for (char *p = buffer; *p; p++) {
+                            if (*p >= 'a' && *p <= 'f')
+                                *p = *p - 'a' + 'A';
+                        }
+                    }
+                    write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'c': {
+                    char ch = (char)va_arg(args, int);
+                    write_serial_char(ch);
+                    break;
+                }
+                case 's': {
+                    char *str = va_arg(args, char *);
+                    write_serial(str ? str : "(null)");
+                    break;
+                }
+                case 'p': {
+                    void *ptr = va_arg(args, void *);
+                    write_serial("0x");
+                    utoa((uintptr_t)ptr, buffer, 16);
+                    write_padded(buffer, width ? width : 16, '0');
+                    break;
+                }
+                case '%': {
+                    write_serial_char('%');
+                    break;
+                }
+                default:
+                    write_serial_char('%');
+                    write_serial_char(*fmt);
+                    break;
+            }
+            fmt++;
         } else {
-            write_serial_char(*format++);
+            write_serial_char(*fmt++);
         }
     }
 

@@ -16,6 +16,7 @@
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
+extern volatile struct limine_bootloader_info_request bootloader_request;
 
 void kernel_main(void) {
     // Setup serial
@@ -95,11 +96,31 @@ void kernel_main(void) {
     buddy_init(buddy_base, buddy_size);
     serial_printf("Buddy allocator initialized\n");
 
-    //if (acpi_init() != 0) {
-    //    write_serial("ACPI Failed");
-    //}
+    if (acpi_init() != 0) {
+        write_serial("ACPI Failed");
+    }
 
     ide_initialize();
+    if (bootloader_request.response) {
+        serial_printf("Bootloader: %s %s\n",
+            bootloader_request.response->name,
+            bootloader_request.response->version);
+    }
     
+    serial_printf("Testing read/write!\n");
+    uint8_t sector[512] = { 'H', 'e', 'l', 'l', 'o', '!', 0 };
+    ide_write_sectors(0, 1, 1, sector);
+
+    int err = ide_read_sectors(0, 1, 1, sector);
+    if (err) {
+        serial_printf("Failed to read boot sector!\n");
+    } else {
+        for (int i = 0; i < 64; i++) {
+            serial_printf("%02X ", sector[i]);
+            if ((i + 1) % 16 == 0) serial_printf("\n");
+        }
+    }
+    serial_printf("Read/Write works\n");
+
     while (1) asm volatile ("hlt");
 }
