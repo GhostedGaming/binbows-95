@@ -1,18 +1,4 @@
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
-#include <limine.h>
 #include <kernel.h>
-#include <serial.h>
-#include <idt.h>
-#include <gdt.h>
-#include <pic.h>
-#include <timer.h>
-#include <pc_speaker.h>
-#include <acpi.h>
-#include <memory.h>
-#include <ide.h>
-#include <fat.h>
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
@@ -119,6 +105,10 @@ void kernel_main(void) {
             }
         }
     }
+
+    serial_printf("Running PCI\n");
+    check_all_buses();
+    serial_printf("PCI finished!");
 
     while (1) asm volatile ("hlt");
 }

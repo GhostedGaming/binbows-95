@@ -2,36 +2,69 @@
 #define PCI_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-// Forward declarations for PCI config space functions
-extern uint32_t read_config_u32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
-extern void write_config_u32(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value);
+// PCI I/O ports
+#define PCI_CONFIG_ADDRESS 0xCF8
+#define PCI_CONFIG_DATA    0xCFC
 
-// Error codes matching the Rust PciError enum
-typedef enum {
-    PCI_SUCCESS = 0,
-    PCI_DEVICE_NOT_FOUND,
-    PCI_INVALID_OFFSET,
-    PCI_IO_FAILURE
-} pci_error_t;
+// PCI config space access macro
+#define PCI_MAKE_ADDRESS(bus, slot, func, offset) \
+    ((uint32_t)(0x80000000 | ((bus) << 16) | ((slot) << 11) | ((func) << 8) | ((offset) & 0xFC)))
 
-/**
- * Information about a single PCI BAR (Base Address Register).
- * A BAR describes a region of memory or I/O space used by a PCI device.
- */
-struct bar_info {
-    /** The BAR index (0-5). Each PCI device can have up to 6 BARs. */
-    uint8_t index;
-    /** True if this BAR is for I/O space, false if for memory space. */
-    bool is_io;
-    /** True if this BAR is a 64-bit memory BAR (spans two BAR slots). */
-    bool is_64bit;
-    /** The base address of the region described by this BAR. */
-    uint64_t address;
-    /** The size (in bytes) of the region described by this BAR. */
-    uint64_t size;
-};
+// PCI layout constants
+#define PCI_MAX_BUSES     256
+#define PCI_MAX_DEVICES   32
+#define PCI_MAX_FUNCTIONS 8
 
-typedef struct bar_info bar_info_t;
+// PCI config space offsets
+#define PCI_VENDOR_ID     0x00
+#define PCI_DEVICE_ID     0x02
+#define PCI_COMMAND       0x04
+#define PCI_STATUS        0x06
+#define PCI_REVISION_ID   0x08
+#define PCI_PROG_IF       0x09
+#define PCI_SUBCLASS      0x0A
+#define PCI_CLASS_CODE    0x0B
+#define PCI_HEADER_TYPE   0x0E
+#define PCI_BAR0          0x10
+#define PCI_CAP_PTR       0x34
+
+// PCI header types
+#define PCI_HEADER_TYPE_NORMAL 0x00
+#define PCI_HEADER_TYPE_BRIDGE 0x01
+#define PCI_HEADER_TYPE_CARDBUS 0x02
+
+// PCI class codes
+#define PCI_CLASS_MASS_STORAGE 0x01
+#define PCI_CLASS_NETWORK      0x02
+#define PCI_CLASS_DISPLAY      0x03
+#define PCI_CLASS_MULTIMEDIA   0x04
+#define PCI_CLASS_MEMORY       0x05
+#define PCI_CLASS_BRIDGE       0x06
+#define PCI_CLASS_SERIAL_BUS   0x0C
+
+// Structure to represent a PCI device
+typedef struct {
+    uint8_t  bus;
+    uint8_t  device;
+    uint8_t  function;
+    uint16_t vendor_id;
+    uint16_t device_id;
+    uint8_t  class_code;
+    uint8_t  subclass;
+    uint8_t  prog_if;
+    uint8_t  revision;
+    uint8_t  header_type;
+} pci_device_t;
+
+uint16_t pci_config_read_word(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
+uint8_t pci_config_read_byte(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
+uint16_t get_vendor_id(uint8_t bus, uint8_t device, uint8_t function);
+uint16_t get_device_id(uint8_t bus, uint8_t device, uint8_t function);
+void check_function(uint8_t bus, uint8_t device, uint8_t function);
+void check_device(uint8_t bus, uint8_t device);
+void check_bus(uint8_t bus);
+void check_all_buses(void);
 
 #endif // PCI_H

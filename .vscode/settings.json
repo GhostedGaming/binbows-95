@@ -5,6 +5,8 @@
         "bitset": "c",
         "ranges": "c",
         "__locale": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "cstdint": "c",
+        "kernel.h": "c"
     }
 }
