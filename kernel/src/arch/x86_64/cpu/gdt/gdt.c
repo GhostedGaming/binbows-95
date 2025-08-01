@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <serial.h>
 #include <gdt.h>
-#include <memory.h>
+#include <mem.h>
 
 #define GDT_ENTRIES 7  // Changed to 7 to accommodate TSS taking 2 entries
 
@@ -64,7 +64,7 @@ void gdt_init(void) {
 }
 
 void gdt_load(void) {
-    write_serial("GDT: gdt_flush");
+    write_serial("GDT: gdt_flush\n");
     
     // Inline assembly to load GDT
     asm volatile (
@@ -85,9 +85,9 @@ void gdt_load(void) {
         : "rax", "memory"
     );
     
-    write_serial("Complete");
+    write_serial("Complete\n");
 
-    write_serial("TSS: loading TSS");
+    write_serial("TSS: loading TSS\n");
     
     // Add a small delay and ensure TSS is properly set up
     for(volatile int i = 0; i < 1000; i++);
@@ -100,5 +100,5 @@ void gdt_load(void) {
         : "memory"
     );
     
-    write_serial("Complete");
+    write_serial("Complete\n");
 }

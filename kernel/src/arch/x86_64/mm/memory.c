@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include <limine.h>
-#include <memory.h>
+#include <mem.h>
 #include <serial.h>
 
 //====================Limine stuff===================================
@@ -350,4 +350,13 @@ void buddy_free(void* ptr, size_t size) {
     BuddyBlock* block = (BuddyBlock*)addr;
     block->next = free_lists[order];
     free_lists[order] = block;
+}
+
+
+void* page_alloc(void) {
+    return buddy_alloc(PAGE_SIZE);
+}
+
+void page_free(void* page) {
+    buddy_free(page, PAGE_SIZE);
 }

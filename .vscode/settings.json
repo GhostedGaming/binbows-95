@@ -8,6 +8,7 @@
         "stdint.h": "c",
         "cstdint": "c",
         "kernel.h": "c",
-        "pci.h": "c"
+        "pci.h": "c",
+        "memory.h": "c"
     }
 }

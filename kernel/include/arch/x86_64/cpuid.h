@@ -3,4 +3,4 @@
 
 char *print_vendor();
 
-#endif
+#endif // CPUID_H

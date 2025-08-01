@@ -12,11 +12,13 @@
 #include <timer.h>
 #include <pc_speaker.h>
 #include <acpi.h>
-#include <memory.h>
+#include <mem.h>
 #include <ide.h>
-#include <fat.h>
 #include <pci.h>
-#include <usb1.h>
+#include <uhci.h>
+#include <framebuffer.h>
+#include <font.h>
+#include <rtc.h>
 
 void kernel_main(void);
 

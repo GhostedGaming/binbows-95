@@ -5,4 +5,4 @@ int init_serial(void);
 void write_serial(const char *str);
 void serial_printf(const char *format, ...);
 
-#endif
+#endif // SERIAL_H

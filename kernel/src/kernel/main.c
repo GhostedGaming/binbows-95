@@ -8,9 +8,7 @@ extern struct ide_device ide_devices[4];
 
 void kernel_main(void) {
     init_serial();
-
-    gdt_init();
-    gdt_load();
+    gdt_init(); gdt_load();
     serial_printf("GDT loaded\n");
 
     idt_init();
@@ -22,13 +20,12 @@ void kernel_main(void) {
 
     init_timer();
     asm volatile ("sti");
+    init_rtc();
 
-    if (memmap_request.response == NULL) {
+    if (!memmap_request.response) {
         serial_printf("memmap_request.response is NULL!\n");
         while (1) asm volatile ("hlt");
     }
-
-    serial_printf("Memory map entries:\n");
 
     uintptr_t usable_phys_base = 0;
     size_t usable_length = 0;
@@ -46,7 +43,7 @@ void kernel_main(void) {
         while (1) asm volatile ("hlt");
     }
 
-    if (hhdm_request.response == NULL) {
+    if (!hhdm_request.response) {
         serial_printf("hhdm_request.response is NULL!\n");
         while (1) asm volatile ("hlt");
     }
@@ -54,10 +51,10 @@ void kernel_main(void) {
     uintptr_t hhdm_offset = (uintptr_t)hhdm_request.response->offset;
     void* usable_virt_base = (void*)(usable_phys_base + hhdm_offset);
 
-    serial_printf("Using usable memory base (phys)=0x%lx (virt)=0x%lx length=0x%lx\n",
-                  (unsigned long)usable_phys_base,
-                  (unsigned long)(uintptr_t)usable_virt_base,
-                  (unsigned long)usable_length);
+    serial_printf("Using memory base: phys=0x%lx virt=0x%lx len=0x%lx\n",
+        (unsigned long)usable_phys_base,
+        (unsigned long)(uintptr_t)usable_virt_base,
+        (unsigned long)usable_length);
 
     size_t early_alloc_size = 0x800000; // 8MB
     void* buddy_base = (void*)((uintptr_t)usable_virt_base + early_alloc_size);
@@ -77,42 +74,26 @@ void kernel_main(void) {
 
     if (bootloader_request.response) {
         serial_printf("Bootloader: %s %s\n",
-                      bootloader_request.response->name,
-                      bootloader_request.response->version);
+            bootloader_request.response->name,
+            bootloader_request.response->version);
     }
 
-    uint32_t total_sectors = ide_devices[0].Size;
-    serial_printf("Formatting drive 0 (%u sectors) as FAT16...\n", total_sectors);
+    init_fb();
+    draw_text(-1, -1, "Formatting Disk...", rgb_to_color(255, 255, 255), false);
 
-    int res = fat16_format(total_sectors);
-    if (res != 0) {
-        serial_printf("Failed to format drive 0 as FAT16! Error code: %d\n", res);
-        while (1) asm volatile ("hlt");
-    } else {
-        serial_printf("Drive 0 formatted successfully as FAT16.\n");
-    }
-
-    uint8_t sector[512] = { 'H', 'e', 'l', 'l', 'o', '!', 0 };
-    if (ide_write_sectors(0, 1, 1, sector) != 0) {
-        serial_printf("Failed to write to sector 1!\n");
-    } else {
-        if (ide_read_sectors(0, 1, 1, sector) != 0) {
-            serial_printf("Failed to read sector 1!\n");
-        } else {
-            for (int i = 0; i < 64; i++) {
-                serial_printf("%02X ", sector[i]);
-                if ((i + 1) % 16 == 0) serial_printf("\n");
-            }
-        }
-    }
-
+    draw_text(-1, -1, "Running PCI", rgb_to_color(255, 255, 255), true);
     serial_printf("Running PCI\n");
+
     check_all_buses();
     serial_printf("PCI finished!\n");
 
+    draw_text(-1, -1, "Initiating UHCI", rgb_to_color(255, 255, 255), true);
     serial_printf("Running uhci_init\n");
+
     uhci_init();
     serial_printf("uhci_init finished!\n");
+
+    draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
     while (1) asm volatile ("hlt");
 }
