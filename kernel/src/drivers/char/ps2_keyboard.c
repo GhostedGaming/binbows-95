@@ -26,7 +26,7 @@ static char get_character(uint8_t key) {
 
 static void handle_special_key(uint8_t key, bool pressed) {
     if (!pressed) return;
-    
+
     switch (key) {
         case KEY_ESC:
             serial_printf("[ESC]\r\n");

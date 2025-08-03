@@ -6,9 +6,151 @@ extern volatile struct limine_bootloader_info_request bootloader_request;
 
 extern struct ide_device ide_devices[4];
 
+void test_file_operations(uint8_t drive) {
+    serial_printf("\n=== Testing FAT12 File Operations ===\n");
+
+    const char *test_msg1 = "Hello, FAT12 world!";
+    serial_printf("Writing file: HELLO.TXT\n");
+    if (fat12_write_file(drive, "HELLO.TXT", (const uint8_t *)test_msg1, strlen(test_msg1)) == 0) {
+        serial_printf("File write successful\n");
+
+        uint8_t buffer[512];
+        uint32_t size = 0;
+        if (fat12_read_file(drive, "HELLO.TXT", buffer, &size)) {
+            serial_printf("File read successful. Content: ");
+            for (uint32_t i = 0; i < size; i++) {
+                write_serial_char(buffer[i]);
+            }
+            write_serial_char('\n');
+        } else {
+            serial_printf("File read failed\n");
+        }
+    } else {
+        serial_printf("File write failed\n");
+    }
+
+    uint8_t binary_data[256];
+    for (int i = 0; i < 256; i++) binary_data[i] = i;
+
+    serial_printf("\nWriting binary file: DATA.BIN\n");
+    if (fat12_write_file(drive, "DATA.BIN", binary_data, 256) == 0) {
+        serial_printf("Binary file write successful\n");
+
+        uint8_t buffer[512];
+        uint32_t size = 0;
+        if (fat12_read_file(drive, "DATA.BIN", buffer, &size)) {
+            serial_printf("Binary file read successful. Size: %u bytes\n", size);
+
+            serial_printf("Binary file hex + ASCII dump:\n");
+            for (uint32_t i = 0; i < size; i += 16) {
+                serial_printf("%04X: ", i);
+
+                for (uint32_t j = 0; j < 16; j++) {
+                    if (i + j < size) {
+                        serial_printf("%02X ", buffer[i + j]);
+                    } else {
+                        serial_printf("   ");
+                    }
+                }
+
+                serial_printf(" |");
+                for (uint32_t j = 0; j < 16; j++) {
+                    if (i + j < size) {
+                        uint8_t c = buffer[i + j];
+                        if (c >= 32 && c <= 126)
+                            write_serial_char(c);
+                        else
+                            write_serial_char('.');
+                    } else {
+                        write_serial_char(' ');
+                    }
+                }
+                serial_printf("|\n");
+            }
+
+            bool data_ok = true;
+            for (uint32_t i = 0; i < size; i++) {
+                if (buffer[i] != (uint8_t)i) {
+                    data_ok = false;
+                    break;
+                }
+            }
+            serial_printf("Data integrity check: %s\n", data_ok ? "PASSED" : "FAILED");
+        } else {
+            serial_printf("Binary file read failed\n");
+        }
+    } else {
+        serial_printf("Binary file write failed\n");
+    }
+
+    const char *large_msg =
+        "This is a larger file that should span multiple clusters. "
+        "We're testing the cluster chaining functionality of our FAT12 "
+        "implementation. If you can read this entire message, then "
+        "the multi-cluster file handling is working correctly. "
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
+        "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+        "Ut enim ad minim veniam, quis nostrud exercitation ullamco "
+        "laboris nisi ut aliquip ex ea commodo consequat.";
+
+    serial_printf("\nWriting large file: LARGE.TXT\n");
+    if (fat12_write_file(drive, "LARGE.TXT", (const uint8_t *)large_msg, strlen(large_msg)) == 0) {
+        serial_printf("Large file write successful\n");
+
+        static uint8_t large_buffer[1024];
+        uint32_t large_size = 0;
+
+        if (fat12_read_file(drive, "LARGE.TXT", large_buffer, &large_size)) {
+            serial_printf("Large file read successful. Size: %u bytes\n", large_size);
+
+            serial_printf("Content preview: ");
+            for (uint32_t i = 0; i < (large_size > 64 ? 64 : large_size); i++) {
+                write_serial_char(large_buffer[i]);
+            }
+            if (large_size > 64) serial_printf("...");
+            write_serial_char('\n');
+
+            serial_printf("Hex dump with ASCII:\n");
+            for (uint32_t i = 0; i < large_size; i += 16) {
+                serial_printf("%04X: ", i);
+
+                for (uint32_t j = 0; j < 16; j++) {
+                    if (i + j < large_size) {
+                        serial_printf("%02X ", large_buffer[i + j]);
+                    } else {
+                        serial_printf("   ");
+                    }
+                }
+
+                serial_printf(" |");
+                for (uint32_t j = 0; j < 16; j++) {
+                    if (i + j < large_size) {
+                        uint8_t c = large_buffer[i + j];
+                        if (c >= 32 && c <= 126)
+                            write_serial_char(c);
+                        else
+                            write_serial_char('.');
+                    } else {
+                        write_serial_char(' ');
+                    }
+                }
+                serial_printf("|\n");
+            }
+
+        } else {
+            serial_printf("Large file read failed\n");
+        }
+    } else {
+        serial_printf("Large file write failed\n");
+    }
+
+    serial_printf("\n=== File Operations Test Complete ===\n");
+}
+
 void kernel_main(void) {
     init_serial();
-    gdt_init(); gdt_load();
+    gdt_init();
+    gdt_load();
     serial_printf("GDT loaded\n");
 
     idt_init();
@@ -56,7 +198,7 @@ void kernel_main(void) {
         (unsigned long)(uintptr_t)usable_virt_base,
         (unsigned long)usable_length);
 
-    size_t early_alloc_size = 0x800000; // 8MB
+    size_t early_alloc_size = 0x800000;
     void* buddy_base = (void*)((uintptr_t)usable_virt_base + early_alloc_size);
     size_t buddy_size = usable_length - early_alloc_size;
 
@@ -72,14 +214,32 @@ void kernel_main(void) {
 
     ide_initialize();
 
-    if (bootloader_request.response) {
-        serial_printf("Bootloader: %s %s\n",
-            bootloader_request.response->name,
-            bootloader_request.response->version);
+    serial_printf("\nFormatting drive with FAT12...\n");
+    format_fat12(0);
+    serial_printf("FAT12 format complete\n");
+
+    uint8_t boot_check[512];
+    if (ide_read_sectors(0, 1, 0, boot_check) == 0) {
+        serial_printf("Boot sector verification:\n");
+        serial_printf("Jump instruction: 0x%02X 0x%02X 0x%02X\n", 
+                     boot_check[0], boot_check[1], boot_check[2]);
+        serial_printf("OEM name: ");
+        for (int i = 3; i < 11; i++) {
+            write_serial_char(boot_check[i]);
+        }
+        write_serial_char('\n');
+        serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
+        
+        bpb_t *test_bpb = (bpb_t *)(boot_check + 11);
+        serial_printf("BPB verification:\n");
+        serial_printf("  bytes_per_sector: %u\n", test_bpb->bytes_per_sector);
+        serial_printf("  sectors_per_cluster: %u\n", test_bpb->sectors_per_cluster);
+        serial_printf("  num_fats: %u\n", test_bpb->num_fats);
+        serial_printf("  fat_size_16: %u\n", test_bpb->fat_size_16);
+        serial_printf("  root_entry_count: %u\n", test_bpb->root_entry_count);
     }
 
     init_fb();
-    draw_text(-1, -1, "Formatting Disk...", rgb_to_color(255, 255, 255), false);
 
     draw_text(-1, -1, "Running PCI", rgb_to_color(255, 255, 255), true);
     serial_printf("Running PCI\n");
@@ -92,6 +252,9 @@ void kernel_main(void) {
 
     uhci_init();
     serial_printf("uhci_init finished!\n");
+
+    test_file_operations(0);
+    serial_printf("test_file_operations complete");
 
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 

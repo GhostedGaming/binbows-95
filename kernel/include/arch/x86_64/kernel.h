@@ -19,6 +19,7 @@
 #include <framebuffer.h>
 #include <font.h>
 #include <rtc.h>
+#include <fat12.h>
 
 void kernel_main(void);
 

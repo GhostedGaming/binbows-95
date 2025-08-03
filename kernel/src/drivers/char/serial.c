@@ -24,7 +24,7 @@ static int is_transmit_empty(void) {
     return inb(PORT + 5) & 0x20;
 }
 
-static void write_serial_char(char a) {
+void write_serial_char(char a) {
     while (!is_transmit_empty());
     outb(PORT, a);
 }

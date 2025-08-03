@@ -2,15 +2,16 @@
 MAKEFLAGS += -rR
 .SUFFIXES:
 
-# Target architecture to build for. Default to x86_64.
+# Architecture (default to x86_64)
 ARCH := x86_64
 
-# Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 2G -serial stdio -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0
+# QEMU flags with ac97 sound card
+QEMUFLAGS := -m 2G -serial stdio -device ac97
 
+# Image name
 override IMAGE_NAME := template-$(ARCH)
 
-# Toolchain for building the 'limine' executable for the host.
+# Host toolchain
 HOST_CC := cc
 HOST_CFLAGS := -g -O2 -pipe
 HOST_CPPFLAGS :=
@@ -29,44 +30,27 @@ run: run-$(ARCH)
 .PHONY: run-hdd
 run-hdd: run-hdd-$(ARCH)
 
-# New phony target to create the ide.img disk image if it doesn't exist
 .PHONY: ide-image
 ide-image:
 	@if [ ! -f ide.img ]; then \
 		echo "Creating ide.img (1GB raw disk image)..."; \
-		qemu-img create -f raw ide.img 1G; \
+		qemu-img create -f raw ide.img 32M; \
 	fi
 
 .PHONY: run-x86_64
-run-x86_64: $(IMAGE_NAME).iso ide-image
-	qemu-system-x86_64 \
+run-x86_64: clean $(IMAGE_NAME).iso ide-image
+	@QEMU_AUDIO_DRV=pa qemu-system-x86_64 \
 		-M pc \
-		-m 2G \
-		-cdrom $(IMAGE_NAME).iso \
-		-drive file=ide.img,format=raw,if=none,id=drive0 \
-		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
-		-serial stdio \
-		-no-reboot \
-		-no-shutdown \
-		-s
-
-.PHONY: run-x86_64
-run-x86_64: $(IMAGE_NAME).iso ide-image
-	qemu-system-x86_64 \
-		-M pc \
-		-m 2G \
+		$(QEMUFLAGS) \
 		-cdrom $(IMAGE_NAME).iso \
 		-drive file=ide.img,format=raw,if=none,id=drive0 \
 		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
 		-device piix3-usb-uhci,id=uhci \
-		-serial stdio \
-		-no-reboot \
-		-no-shutdown \
-		-s
+		-no-reboot -no-shutdown -s
 
 .PHONY: run-aarch64
 run-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu cortex-a72 \
 		-device ramfb \
@@ -79,7 +63,7 @@ run-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
 
 .PHONY: run-hdd-aarch64
 run-hdd-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu cortex-a72 \
 		-device ramfb \
@@ -92,7 +76,7 @@ run-hdd-aarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
 
 .PHONY: run-riscv64
 run-riscv64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu rv64 \
 		-device ramfb \
@@ -105,7 +89,7 @@ run-riscv64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
 
 .PHONY: run-hdd-riscv64
 run-hdd-riscv64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu rv64 \
 		-device ramfb \
@@ -118,7 +102,7 @@ run-hdd-riscv64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
 
 .PHONY: run-loongarch64
 run-loongarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu la464 \
 		-device ramfb \
@@ -131,7 +115,7 @@ run-loongarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
 
 .PHONY: run-hdd-loongarch64
 run-hdd-loongarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M virt \
 		-cpu la464 \
 		-device ramfb \
@@ -142,10 +126,27 @@ run-hdd-loongarch64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).hdd
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
 
+.PHONY: codespace-setup
+codespace-setup:
+	@echo "Installing build dependencies for GitHub Codespaces..."
+	sudo apt update && sudo apt install -y build-essential nasm qemu-system-x86 qemu-utils mtools xorriso sgdisk curl
+
+.PHONY: run-codespace
+run-codespace: clean $(IMAGE_NAME).iso ide-image
+	@echo "Running QEMU in headless mode for Codespaces..."
+	qemu-system-x86_64 \
+		-m 2G \
+		-cdrom $(IMAGE_NAME).iso \
+		-drive file=ide.img,format=raw,if=none,id=drive0 \
+		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
+		-no-reboot \
+		-no-shutdown \
+		-nographic \
+		-s
 
 .PHONY: run-bios
 run-bios: $(IMAGE_NAME).iso
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M q35 \
 		-cdrom $(IMAGE_NAME).iso \
 		-boot d \
@@ -153,7 +154,7 @@ run-bios: $(IMAGE_NAME).iso
 
 .PHONY: run-hdd-bios
 run-hdd-bios: $(IMAGE_NAME).hdd
-	qemu-system-$(ARCH) \
+	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
 		-M q35 \
 		-hda $(IMAGE_NAME).hdd \
 		$(QEMUFLAGS)
@@ -186,11 +187,9 @@ kernel: kernel-deps
 
 $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
-	mkdir -p iso_root/boot
+	mkdir -p iso_root/boot/limine iso_root/EFI/BOOT
 	cp -v kernel/bin-$(ARCH)/kernel iso_root/boot/
-	mkdir -p iso_root/boot/limine
 	cp -v limine.conf iso_root/boot/limine/
-	mkdir -p iso_root/EFI/BOOT
 ifeq ($(ARCH),x86_64)
 	cp -v limine/limine-bios.sys limine/limine-bios-cd.bin limine/limine-uefi-cd.bin iso_root/boot/limine/
 	cp -v limine/BOOTX64.EFI iso_root/EFI/BOOT/
@@ -262,9 +261,9 @@ endif
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd ide.img # Added ide.img to clean
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd ide.img
 
 .PHONY: distclean
 distclean:
 	$(MAKE) -C kernel distclean
-	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img # Added ide.img to distclean
+	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img
