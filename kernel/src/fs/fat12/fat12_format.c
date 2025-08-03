@@ -62,7 +62,7 @@ void format_fat12(uint8_t drive) {
     serial_printf("Formatting drive: %d sectors, FAT size: %d sectors\n", total_sectors, fat_size_16);
 
     // Clear the entire drive
-    const uint8_t max_write = 100;
+    const uint8_t max_write = 171;
     uint8_t zero_buf[512 * max_write];
     memset(zero_buf, 0, sizeof(zero_buf));
 
@@ -82,7 +82,7 @@ void format_fat12(uint8_t drive) {
     boot_sector[2] = 0x90;
 
     // OEM name
-    memcpy(&boot_sector[3], "MSDOS5.0", 8);
+    memcpy(&boot_sector[3], "binbows", 8);
 
     // BPB starts at offset 11
     uint8_t *bpb_ptr = &boot_sector[11];

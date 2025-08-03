@@ -235,5 +235,5 @@ void kernel_main(void) {
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
     // Halt CPU
-    while (1) asm volatile ("hlt");
+    for (;;) asm volatile ("hlt");
 }
