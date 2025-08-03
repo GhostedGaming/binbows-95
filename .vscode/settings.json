@@ -11,6 +11,7 @@
         "pci.h": "c",
         "memory.h": "c",
         "ps2_keyboard.h": "c",
-        "pc_speaker.h": "c"
+        "pc_speaker.h": "c",
+        "fat12.h": "c"
     }
 }

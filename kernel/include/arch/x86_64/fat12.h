@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <ide.h>
+#include <mem.h>
+#include <util.h>
 
 #define MAX_FILE_NAME 11
 #define SECTOR_SIZE 512
@@ -60,6 +63,11 @@ typedef struct {
 // FAT12 end-of-cluster marker
 #define FAT12_EOC 0xFF8
 
+// Global BPB cache to avoid repeated reads
+static bpb_t cached_bpb;
+static bool bpb_cached = false;
+static uint8_t cached_drive = 0xFF;
+
 // Function declarations
 void format_fat12(uint8_t drive);
 uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count);
@@ -68,6 +76,7 @@ void fat12_write_dir_entry(uint8_t drive, bpb_t* bpb, int index, const char* fil
 int fat12_write_file(uint8_t drive, const char *filename, const uint8_t *data, uint32_t size);
 
 // Internal helper functions
+int read_bpb(uint8_t drive, bpb_t *bpb);
 uint16_t fat12_read_entry(const uint8_t* fat, uint16_t cluster);
 void fat12_write_entry(uint8_t* fat, uint16_t cluster, uint16_t value);
 int fat12_find_free_cluster(uint8_t* fat, uint16_t max_clusters);
