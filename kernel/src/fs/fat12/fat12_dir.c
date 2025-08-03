@@ -1,6 +1,6 @@
 #include <fat12.h>
 
-int fat12_find_free_root_dir_entry(uint8_t drive, bpb_t* bpb) {
+int fat12_find_free_root_dir_entry(uint8_t drive, bpb_t12* bpb) {
     uint32_t root_dir_sectors = ((bpb->root_entry_count * 32) + (bpb->bytes_per_sector - 1)) / bpb->bytes_per_sector;
     uint32_t root_dir_lba = bpb->reserved_sector_count + bpb->num_fats * bpb->fat_size_16;
 
@@ -19,7 +19,7 @@ int fat12_find_free_root_dir_entry(uint8_t drive, bpb_t* bpb) {
     return -1;
 }
 
-void fat12_write_dir_entry(uint8_t drive, bpb_t* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size) {
+void fat12_write_dir_entry(uint8_t drive, bpb_t12* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size) {
     uint32_t lba = bpb->reserved_sector_count + bpb->num_fats * bpb->fat_size_16;
     uint32_t entries_per_sector = bpb->bytes_per_sector / 32;
     uint32_t sector_index = index / entries_per_sector;

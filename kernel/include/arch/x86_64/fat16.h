@@ -32,7 +32,7 @@ typedef struct {
     uint32_t volume_id;
     uint8_t volume_label[11];
     uint8_t file_system_type[8];
-} __attribute__((packed)) bpb_t;
+} __attribute__((packed)) bpb_t16;
 
 // Directory Entry structure
 typedef struct {
@@ -66,28 +66,28 @@ typedef struct {
 #define FAT16_FREE_CLUSTER 0x0000
 
 // Global BPB cache to avoid repeated reads
-static bpb_t cached_bpb;
-static bool bpb_cached = false;
-static uint8_t cached_drive = 0xFF;
+static bpb_t16 cached_bpb16;
+static bool bpb_cached16 = false;
+static uint8_t cached_drive16 = 0xFF;
 
 // Function declarations
 void format_fat16(uint8_t drive);
 uint16_t fat16_alloc_clusters(uint8_t drive, uint16_t count);
 void fat16_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size);
-void fat16_write_dir_entry(uint8_t drive, bpb_t* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size);
+void fat16_write_dir_entry(uint8_t drive, bpb_t16* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size);
 int fat16_write_file(uint8_t drive, const char *filename, const uint8_t *data, uint32_t size);
 bool fat16_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out);
 
 // Internal helper functions
-int read_bpb16(uint8_t drive, bpb_t *bpb);
+int read_bpb16(uint8_t drive, bpb_t16 *bpb);
 uint16_t fat16_read_entry(const uint8_t* fat, uint16_t cluster);
 void fat16_write_entry(uint8_t* fat, uint16_t cluster, uint16_t value);
 int fat16_find_free_cluster(uint8_t* fat, uint16_t max_clusters);
 void fat16_write_fat(uint8_t drive, uint8_t num_fats, uint16_t fat_size_16, const uint8_t* fat_data, uint8_t reserved_sector_count);
-int fat16_find_free_root_dir_entry(uint8_t drive, bpb_t* bpb);
+int fat16_find_free_root_dir_entry(uint8_t drive, bpb_t16* bpb);
 void fat16_format_filename(const char* filename, char* fat_name);
 void fat16_format_filename_for_compare(const char* filename, char* fat_name);
-bool validate_bpb16(bpb_t *bpb);
+bool validate_bpb16(bpb_t16 *bpb);
 void fat16_init(uint8_t drive, uint8_t reserved_sector_count, uint8_t num_fats, uint16_t fat_size_16);
 
 #endif // FAT16_H

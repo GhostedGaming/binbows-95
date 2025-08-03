@@ -4,7 +4,7 @@
 #define FAT16_EOC 0xFFF8
 
 void fat16_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size) {
-    bpb_t bpb;
+    bpb_t16 bpb;
     uint8_t fat[512 * 12];
 
     if (read_bpb(drive, &bpb) != 0) {
@@ -69,7 +69,7 @@ void fat16_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
 }
 
 int fat16_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
-    bpb_t bpb;
+    bpb_t16 bpb;
 
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat16_write_file\n");
@@ -105,7 +105,7 @@ int fat16_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
 }
 
 bool fat16_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
-    bpb_t bpb;
+    bpb_t16 bpb;
 
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB\n");

@@ -1,6 +1,6 @@
 #include <fat32.h>
 
-int fat32_find_free_dir_entry(uint8_t drive, bpb_t* bpb, uint32_t dir_cluster) {
+int fat32_find_free_dir_entry(uint8_t drive, bpb_t32* bpb, uint32_t dir_cluster) {
     uint8_t sector[512];
     uint32_t sectors_per_cluster = bpb->sectors_per_cluster;
     uint32_t bytes_per_sector = bpb->bytes_per_sector;
@@ -32,7 +32,7 @@ int fat32_find_free_dir_entry(uint8_t drive, bpb_t* bpb, uint32_t dir_cluster) {
     return -1;
 }
 
-void fat32_write_dir_entry(uint8_t drive, bpb_t* bpb, uint32_t parent_cluster, const char* filename, uint32_t first_cluster, uint32_t size) {
+void fat32_write_dir_entry(uint8_t drive, bpb_t32* bpb, uint32_t parent_cluster, const char* filename, uint32_t first_cluster, uint32_t size) {
     uint8_t sector[512];
     uint32_t bytes_per_sector = bpb->bytes_per_sector;
     uint32_t entries_per_sector = bytes_per_sector / 32;

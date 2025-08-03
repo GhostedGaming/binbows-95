@@ -65,7 +65,7 @@ void format_fat32(uint8_t drive) {
                   total_sectors, est_clusters, fat_size_32);
 
     // Clear the entire drive
-    const uint8_t max_write = 171;
+    const uint8_t max_write = 100;
     uint8_t zero_buf[512 * max_write];
     memset(zero_buf, 0, sizeof(zero_buf));
     for (uint32_t lba = 0; lba < total_sectors;) {
@@ -144,7 +144,7 @@ void format_fat32(uint8_t drive) {
     serial_printf("FAT32 root directory written\n");
 
     // Clear cache
-    bpb_cached = false;
+    bpb_cached32 = false;
 
     serial_printf("FAT32 format complete\n");
 }

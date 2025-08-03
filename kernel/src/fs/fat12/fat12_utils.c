@@ -34,7 +34,7 @@ void format_filename_for_compare(const char* filename, char* fat_name) {
     fat12_format_filename(filename, fat_name);
 }
 
-bool validate_bpb(bpb_t *bpb) {
+bool validate_bpb(bpb_t12 *bpb) {
     if (bpb->bytes_per_sector == 0 || bpb->bytes_per_sector != 512) {
         serial_printf("Invalid bytes_per_sector: %u\n", bpb->bytes_per_sector);
         return false;
@@ -58,10 +58,10 @@ bool validate_bpb(bpb_t *bpb) {
     return true;
 }
 
-int read_bpb(uint8_t drive, bpb_t *bpb) {
+int read_bpb(uint8_t drive, bpb_t12 *bpb) {
     // Use cached BPB if available for the same drive
-    if (bpb_cached && cached_drive == drive) {
-        memcpy(bpb, &cached_bpb, sizeof(bpb_t));
+    if (bpb_cached12 && cached_drive12 == drive) {
+        memcpy(bpb, &cached_bpb12, sizeof(bpb_t12));
         return 0;
     }
     
@@ -76,12 +76,12 @@ int read_bpb(uint8_t drive, bpb_t *bpb) {
         return -1;
     }
     
-    memcpy(bpb, boot_sector + 11, sizeof(bpb_t));
+    memcpy(bpb, boot_sector + 11, sizeof(bpb_t12));
     
     // Cache the BPB
-    memcpy(&cached_bpb, bpb, sizeof(bpb_t));
-    bpb_cached = true;
-    cached_drive = drive;
+    memcpy(&cached_bpb12, bpb, sizeof(bpb_t12));
+    bpb_cached12 = true;
+    cached_drive12 = drive;
     
     return 0;
 }

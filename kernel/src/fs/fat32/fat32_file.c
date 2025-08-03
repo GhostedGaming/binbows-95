@@ -3,7 +3,7 @@
 #define FAT32_EOC 0x0FFFFFF8
 
 void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *data, uint32_t size) {
-    bpb_t bpb;
+    bpb_t32 bpb;
     uint8_t fat[512 * 128];
 
     if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
@@ -60,7 +60,7 @@ void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *
 }
 
 int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
-    bpb_t bpb;
+    bpb_t32 bpb;
 
     if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
         serial_printf("Invalid BPB in fat32_write_file\n");
@@ -91,7 +91,7 @@ int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
 }
 
 bool fat32_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
-    bpb_t bpb;
+    bpb_t32 bpb;
 
     if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
         serial_printf("Invalid BPB in fat32_read_file\n");

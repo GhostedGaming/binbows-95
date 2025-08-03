@@ -37,7 +37,7 @@ void fat32_format_filename_for_compare(const char* filename, char* fat_name) {
 }
 
 // Validate that the loaded BPB is a proper FAT32 structure
-bool validate_bpb32(bpb_t *bpb) {
+bool validate_bpb32(bpb_t32 *bpb) {
     if (bpb->bytes_per_sector != 512) {
         serial_printf("Invalid bytes_per_sector: %u\n", bpb->bytes_per_sector);
         return false;
@@ -62,9 +62,9 @@ bool validate_bpb32(bpb_t *bpb) {
 }
 
 // Read BPB from sector 0 and cache it
-int read_bpb32(uint8_t drive, bpb_t *bpb) {
-    if (bpb_cached && cached_drive == drive) {
-        memcpy(bpb, &cached_bpb, sizeof(bpb_t));
+int read_bpb32(uint8_t drive, bpb_t32 *bpb) {
+    if (bpb_cached32 && cached_drive32 == drive) {
+        memcpy(bpb, &cached_bpb32, sizeof(bpb_t32));
         return 0;
     }
 
@@ -79,17 +79,17 @@ int read_bpb32(uint8_t drive, bpb_t *bpb) {
         return -1;
     }
 
-    memcpy(bpb, boot_sector + 11, sizeof(bpb_t));
+    memcpy(bpb, boot_sector + 11, sizeof(bpb_t32));
 
     // Cache the BPB
-    memcpy(&cached_bpb, bpb, sizeof(bpb_t));
-    bpb_cached = true;
-    cached_drive = drive;
+    memcpy(&cached_bpb32, bpb, sizeof(bpb_t32));
+    bpb_cached32 = true;
+    cached_drive32 = drive;
 
     return 0;
 }
 
-uint32_t cluster_to_lba(bpb_t* bpb, uint32_t cluster) {
+uint32_t cluster_to_lba(bpb_t32* bpb, uint32_t cluster) {
     uint32_t first_data_sector =
         bpb->reserved_sector_count +
         (bpb->num_fats * bpb->fat_size_32);

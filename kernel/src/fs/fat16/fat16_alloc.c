@@ -1,7 +1,7 @@
 #include <fat16.h>
 
 uint16_t fat16_alloc_clusters(uint8_t drive, uint16_t count) {
-    bpb_t bpb;
+    bpb_t16 bpb;
     uint8_t fat[512 * 12];  // Support up to 12 sectors of FAT
     
     if (read_bpb(drive, &bpb) != 0) {

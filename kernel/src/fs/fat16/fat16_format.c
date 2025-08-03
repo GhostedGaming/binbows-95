@@ -76,7 +76,7 @@ void format_fat16(uint8_t drive) {
                   total_sectors, total_clusters, fat_size_16);
 
     // Clear entire drive
-    const uint8_t max_write = 171;
+    const uint8_t max_write = 100;
     uint8_t zero_buf[512 * max_write];
     memset(zero_buf, 0, sizeof(zero_buf));
     for (uint32_t lba = 0; lba < (uint32_t)total_sectors;) {
@@ -137,7 +137,7 @@ void format_fat16(uint8_t drive) {
     // Verify BPB
     uint8_t verify_sector[512];
     ide_read_sectors(drive, 1, 0, verify_sector);
-    bpb_t *verify_bpb = (bpb_t*)(verify_sector + 11);
+    bpb_t16 *verify_bpb = (bpb_t16*)(verify_sector + 11);
     serial_printf("BPB verification after write:\n");
     serial_printf("  bytes_per_sector: %u\n", verify_bpb->bytes_per_sector);
     serial_printf("  sectors_per_cluster: %u\n", verify_bpb->sectors_per_cluster);
@@ -158,7 +158,7 @@ void format_fat16(uint8_t drive) {
     serial_printf("FAT16 root directory written\n");
     
     // Clear BPB cache to force re-read
-    bpb_cached = false;
+    bpb_cached16 = false;
     
     serial_printf("FAT16 format complete\n");
 }

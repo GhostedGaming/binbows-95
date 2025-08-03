@@ -1,7 +1,7 @@
 #include <fat32.h>
 
 uint32_t fat32_alloc_clusters(uint8_t drive, uint32_t count) {
-    bpb_t bpb;
+    bpb_t32 bpb;
     uint8_t fat[512 * 128];  // Support up to 128 sectors of FAT (64 KB)
 
     if (read_bpb32(drive, &bpb) != 0) {

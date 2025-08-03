@@ -62,7 +62,7 @@ void format_fat12(uint8_t drive) {
     serial_printf("Formatting drive: %d sectors, FAT size: %d sectors\n", total_sectors, fat_size_16);
 
     // Clear the entire drive
-    const uint8_t max_write = 171;
+    const uint8_t max_write = 100;
     uint8_t zero_buf[512 * max_write];
     memset(zero_buf, 0, sizeof(zero_buf));
 
@@ -127,7 +127,7 @@ void format_fat12(uint8_t drive) {
     // Verify boot sector
     uint8_t verify_sector[512];
     ide_read_sectors(drive, 1, 0, verify_sector);
-    bpb_t *verify_bpb = (bpb_t*)(verify_sector + 11);
+    bpb_t12 *verify_bpb = (bpb_t12*)(verify_sector + 11);
     serial_printf("BPB verification after write:\n");
     serial_printf("  bytes_per_sector: %u\n", verify_bpb->bytes_per_sector);
     serial_printf("  sectors_per_cluster: %u\n", verify_bpb->sectors_per_cluster);
@@ -150,5 +150,5 @@ void format_fat12(uint8_t drive) {
     serial_printf("Root_dir written\n");
     
     // Clear BPB cache to force re-read
-    bpb_cached = false;
+    bpb_cached12 = false;
 }

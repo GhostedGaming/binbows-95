@@ -206,7 +206,7 @@ void kernel_main(void) {
         write_serial_char('\n');
         serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
 
-        bpb_t *test_bpb = (bpb_t *)(boot_check + 11);
+        bpb_t12 *test_bpb = (bpb_t12 *)(boot_check + 11);
         serial_printf("BPB verification:\n");
         serial_printf("  bytes_per_sector: %u\n", test_bpb->bytes_per_sector);
         serial_printf("  sectors_per_cluster: %u\n", test_bpb->sectors_per_cluster);
