@@ -126,6 +126,7 @@ void test_file_operations(uint8_t drive) {
  */
 void kernel_main(void) {
     // Initialize low-level systems
+    enable_sse();
     init_serial();
     gdt_init();
     gdt_load();
@@ -233,6 +234,8 @@ void kernel_main(void) {
     serial_printf("test_file_operations complete\n");
 
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
+
+    shell_init();
 
     // Halt CPU
     for (;;) asm volatile ("hlt");

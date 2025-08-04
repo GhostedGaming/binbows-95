@@ -84,6 +84,7 @@ override CFLAGS += \
 override CPPFLAGS := \
     -I src \
     -I include/arch/x86_64 \
+    -I include/kernel \
     -I limine-protocol/include \
     -isystem freestnd-c-hdrs/include \
     $(CPPFLAGS) \
