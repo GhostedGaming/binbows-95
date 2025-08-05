@@ -7,6 +7,11 @@
 #include <timer.h>
 #include <io.h>
 
+#define IA32_STAR      0xC0000081
+#define IA32_LSTAR     0xC0000082
+#define IA32_FMASK     0xC0000084
+#define IA32_KERNEL_GS_BASE 0xC0000102
+
 // IDT definition
 __attribute__((aligned(0x10))) static idt_entry_t idt[256];
 static idtr_t idtr;
@@ -22,6 +27,17 @@ extern void isr30(void), isr31(void);
 extern void irq0(void); // Timer
 extern void irq1(void); // Keyboard
 
+// Syscall assembly entry point (defined in syscall.asm)
+extern void syscall_entry(void);
+
+// Write to MSR
+static inline void write_msr(uint32_t msr, uint64_t value) {
+    uint32_t low = (uint32_t)(value & 0xFFFFFFFF);
+    uint32_t high = (uint32_t)(value >> 32);
+    __asm__ volatile ("wrmsr" : : "c"(msr), "a"(low), "d"(high));
+}
+
+// Add one entry into the IDT
 static void idt_add_entry(uint8_t vector, void* isr, uint8_t flags) {
     uint64_t addr = (uint64_t)isr;
     idt[vector].isr_low = addr & 0xFFFF;
@@ -33,6 +49,7 @@ static void idt_add_entry(uint8_t vector, void* isr, uint8_t flags) {
     idt[vector].reserved = 0;
 }
 
+// Initialize exceptions (ISRs 0-31)
 void install_exceptions(void) {
     void (*exceptions[])(void) = {
         isr0, isr1, isr2, isr3, isr4, isr5, isr6, isr7,
@@ -42,12 +59,13 @@ void install_exceptions(void) {
     };
 
     for (int i = 0; i < 32; i++) {
-        idt_add_entry(i, exceptions[i], 0x8E);
+        idt_add_entry(i, exceptions[i], 0x8E); // Present, DPL=0, interrupt gate
     }
 
     write_serial("IDT: CPU exception handlers installed\n");
 }
 
+// Install IRQ handler
 void install_irq_common(uint8_t irq_vector, void* handler) {
     idt_add_entry(irq_vector, handler, 0x8E);
 }
@@ -96,13 +114,9 @@ void isr_handler(uint64_t interrupt_number) {
 void irq_handler(uint64_t irq_number) {
     switch(irq_number) {
         case 32: // IRQ0 - Timer
-            // write_serial("Tick");
-            // ^ Only uncomment if you need to debug ^
             on_irq0();
             break;
-        case 33:
-            write_serial("Keyboard IRQ received\n");
-            // ^ Only uncomment if you need to debug ^
+        case 33: // IRQ1 - Keyboard
             keyboard_handler(NULL);
             break;
         default:
@@ -110,9 +124,38 @@ void irq_handler(uint64_t irq_number) {
             break;
     }
 
-    // Send EOI to PIC
+    // Send EOI to PICs
     if (irq_number >= 40) {
-        outb(0xA0, 0x20); // Send EOI to slave PIC
+        outb(0xA0, 0x20); // Slave PIC
     }
-    outb(0x20, 0x20); // Send EOI to master PIC
+    outb(0x20, 0x20); // Master PIC
+}
+
+uint64_t syscall_handler(uint64_t syscall_num,
+                         uint64_t arg1,
+                         uint64_t arg2,
+                         uint64_t arg3,
+                         uint64_t arg4,
+                         uint64_t arg5,
+                         uint64_t arg6) {
+    switch (syscall_num) {
+        case 1:
+            write_serial((const char *)arg1);
+            return 0;
+        case 2:
+            return 42;
+        default:
+            write_serial("Unknown syscall\n");
+            return (uint64_t)-1;
+    }
+}
+
+void syscall_init(void) {
+    uint64_t star = ((uint64_t)0x08 << 32) | ((uint64_t)0x10 << 48);
+    write_msr(IA32_STAR, star);
+    write_msr(IA32_LSTAR, (uint64_t)syscall_entry);
+    write_msr(IA32_FMASK, 0x200);
+    write_msr(IA32_KERNEL_GS_BASE, 0);
+    
+    write_serial("Syscall MSRs initialized\n");
 }

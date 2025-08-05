@@ -1,4 +1,5 @@
 #include <kernel.h>
+#include <test.h>
 
 // LIMINE bootloader protocol requests
 extern volatile struct limine_memmap_request memmap_request;
@@ -235,7 +236,13 @@ void kernel_main(void) {
 
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
+    timer_wait_seconds(5);
+
     shell_init();
+
+    fat12_write_file(0, "TEST.BIN", bin_x86_64_tools_test_bin, bin_x86_64_tools_test_bin_len);
+
+    serial_printf("File written\n");
 
     // Halt CPU
     for (;;) asm volatile ("hlt");

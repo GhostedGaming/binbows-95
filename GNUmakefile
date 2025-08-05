@@ -30,6 +30,10 @@ run: run-$(ARCH)
 .PHONY: run-hdd
 run-hdd: run-hdd-$(ARCH)
 
+.PHONY: tools
+tools:
+	$(MAKE) -C kernel/src/kernel/tools
+
 .PHONY: ide-image
 ide-image:
 	@if [ ! -f ide.img ]; then \
