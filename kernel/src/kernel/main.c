@@ -134,6 +134,7 @@ void kernel_main(void) {
     serial_printf("GDT loaded\n");
 
     idt_init();
+    syscall_init();
     install_exceptions();
     init_timer_irq();
     init_keyboard_irq();
@@ -240,9 +241,7 @@ void kernel_main(void) {
 
     shell_init();
 
-    fat12_write_file(0, "TEST.BIN", bin_x86_64_tools_test_bin, bin_x86_64_tools_test_bin_len);
-
-    serial_printf("File written\n");
+    serial_printf("Binaries written to disk\n");
 
     // Halt CPU
     for (;;) asm volatile ("hlt");
