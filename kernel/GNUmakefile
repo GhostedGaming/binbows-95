@@ -12,13 +12,16 @@ TOOLCHAIN_PREFIX :=
 ifeq ($(TOOLCHAIN),llvm)
 	CC := clang
 	LD := ld.lld
+	OBJCOPY := llvm-objcopy
 else
 	ifneq ($(TOOLCHAIN_PREFIX),)
 		CC := $(TOOLCHAIN_PREFIX)gcc
 		LD := $(TOOLCHAIN_PREFIX)ld
+		OBJCOPY := $(TOOLCHAIN_PREFIX)objcopy
 	else
 		CC := cc
 		LD := ld
+		OBJCOPY := objcopy
 	endif
 endif
 
@@ -65,6 +68,7 @@ TOOLS_OUTDIR := bin-$(ARCH)/tools
 TOOLS_SRC := $(wildcard $(TOOLS_SRCDIR)/*.c)
 TOOLS_OBJ := $(patsubst %.c,obj-$(ARCH)/%.o,$(TOOLS_SRC))
 TOOLS_BIN := $(patsubst $(TOOLS_SRCDIR)/%.c,$(TOOLS_OUTDIR)/%.bin,$(TOOLS_SRC))
+TOOLS_ELF := $(patsubst $(TOOLS_SRCDIR)/%.c,$(TOOLS_OUTDIR)/%.elf,$(TOOLS_SRC))
 
 # Additional dependencies for tools - e.g. shared libs
 TOOLS_DEPS := obj-$(ARCH)/src/drivers/char/serial.c.o
@@ -107,10 +111,16 @@ obj-$(ARCH)/%.asm.o: %.asm GNUmakefile
 	@mkdir -p $(dir $@)
 	@$(NASM) $(NASMFLAGS) $< -o $@
 
-$(TOOLS_OUTDIR)/%.bin: obj-$(ARCH)/$(TOOLS_SRCDIR)/%.c.o $(TOOLS_DEPS) $(TOOLS_LINKER_SCRIPT)
-	@echo "Linking tool $@ ..."
+# First create ELF, then convert to flat binary
+$(TOOLS_OUTDIR)/%.elf: obj-$(ARCH)/$(TOOLS_SRCDIR)/%.c.o $(TOOLS_DEPS) $(TOOLS_LINKER_SCRIPT)
+	@echo "Linking tool ELF $@ ..."
 	@mkdir -p $(dir $@)
 	@$(LD) -nostdlib -static -T $(TOOLS_LINKER_SCRIPT) -o $@ $(filter %.o,$^)
+
+$(TOOLS_OUTDIR)/%.bin: $(TOOLS_OUTDIR)/%.elf
+	@echo "Converting to flat binary $@ ..."
+	@$(OBJCOPY) -O binary $< $@
+	@echo "Generated flat binary: $@ (size: $$(stat -c%s $@) bytes)"
 
 tools: $(TOOLS_BIN)
 
@@ -118,11 +128,17 @@ bin/includes: $(HEADER_FILES)
 
 $(INCLUDE_BIN_DIR)/%.h: bin-$(ARCH)/tools/%.bin
 	@mkdir -p $(INCLUDE_BIN_DIR)
-	xxd -i $< > $@
+	@echo "Generating header for $< ..."
+	@xxd -i $< > $@
 
 clean:
 	@echo "Removing binaries, objects, and generated headers..."
 	@rm -rf bin-$(ARCH) obj-$(ARCH) $(INCLUDE_BIN_DIR)
+
+# Clean intermediate ELF files but keep final binaries
+clean-intermediate:
+	@echo "Removing intermediate ELF files..."
+	@rm -f $(TOOLS_ELF)
 
 install: all
 	@echo "Installing $(OUTPUT) to $(DESTDIR)$(PREFIX)/share/$(OUTPUT)/ ..."
@@ -133,3 +149,21 @@ uninstall:
 	@echo "Uninstalling $(OUTPUT) from $(DESTDIR)$(PREFIX)/share/$(OUTPUT)/ ..."
 	@rm -f "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)/$(OUTPUT)-$(ARCH)"
 	@-rmdir "$(DESTDIR)$(PREFIX)/share/$(OUTPUT)"
+
+# Debugging targets
+debug-tools:
+	@echo "Tools source files: $(TOOLS_SRC)"
+	@echo "Tools ELF files: $(TOOLS_ELF)"
+	@echo "Tools binary files: $(TOOLS_BIN)"
+	@echo "Header files: $(HEADER_FILES)"
+
+verify-binaries: $(TOOLS_BIN)
+	@echo "Verifying flat binaries..."
+	@for bin in $(TOOLS_BIN); do \
+		echo "Checking $$bin:"; \
+		file $$bin; \
+		echo "Size: $$(stat -c%s $$bin) bytes"; \
+		echo "First 32 bytes:"; \
+		hexdump -C $$bin | head -n 2; \
+		echo ""; \
+	done

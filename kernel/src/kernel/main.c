@@ -1,5 +1,6 @@
 #include <kernel.h>
 #include <test.h>
+#include <fbe.h>
 
 // LIMINE bootloader protocol requests
 extern volatile struct limine_memmap_request memmap_request;
@@ -8,6 +9,10 @@ extern volatile struct limine_bootloader_info_request bootloader_request;
 
 // IDE device array
 extern struct ide_device ide_devices[4]; // Change the number for more ide drives
+
+// Global execution memory region
+void* global_exec_region = NULL;
+size_t global_exec_size = 0x100000; // 1MB for binary execution
 
 /**
  * Runs a series of tests to verify FAT12 file operations.
@@ -191,6 +196,14 @@ void kernel_main(void) {
     buddy_init(buddy_base, buddy_size);
     serial_printf("Buddy allocator initialized\n");
 
+    // *** NEW: Allocate dedicated execution memory region ***
+    global_exec_region = buddy_alloc(global_exec_size);
+    if (!global_exec_region) {
+        serial_printf("CRITICAL: Failed to allocate execution memory region (%zu bytes)!\n", global_exec_size);
+        while (1) asm volatile ("hlt");
+    }
+    serial_printf("Execution region allocated: %p (size: %zu bytes)\n", global_exec_region, global_exec_size);
+
     // Initialize subsystems
     if (acpi_init() != 0) write_serial("ACPI initialization failed\n");
     ide_initialize();
@@ -235,6 +248,8 @@ void kernel_main(void) {
     test_file_operations(0);
     serial_printf("test_file_operations complete\n");
 
+    fat12_write_file(0, "TEST.BIN", bin_x86_64_tools_test_bin, bin_x86_64_tools_test_bin_len);
+
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
     timer_wait_seconds(5);
@@ -242,6 +257,14 @@ void kernel_main(void) {
     shell_init();
 
     serial_printf("Binaries written to disk\n");
+
+    run_bin("TEST.BIN");
+
+    uint64_t rax_value;
+
+    __asm__ volatile ("mov %%rax, %0" : "=r"(rax_value));
+
+    serial_printf("RAX = 0x%016lx\n", rax_value);
 
     // Halt CPU
     for (;;) asm volatile ("hlt");

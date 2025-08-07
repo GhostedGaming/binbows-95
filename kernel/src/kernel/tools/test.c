@@ -1,5 +1,5 @@
 #include <serial.h>
 
-void _start() {
-    serial_printf("Hello world!\n");
+void _start(void) {
+    serial_printf("Hello world!");
 }

@@ -97,17 +97,39 @@ void idt_load(void) {
 }
 
 void isr_handler(uint64_t interrupt_number) {
-    write_serial("CPU Exception!\n");
+    serial_printf("=== CPU Exception %lu ===\n", interrupt_number);
 
     switch(interrupt_number) {
-        case 0: write_serial("Division by zero\n"); break;
-        case 6: write_serial("Invalid opcode\n"); break;
-        case 8: write_serial("Double fault\n"); break;
-        case 13: write_serial("General protection fault\n"); break;
-        case 14: write_serial("Page fault\n"); break;
-        default: write_serial("Unhandled exception\n"); break;
+        case 0: 
+            serial_printf("Division by zero\n"); 
+            break;
+        case 6: 
+            serial_printf("Invalid opcode\n");
+            break;
+        case 8: 
+            serial_printf("Double fault\n"); 
+            break;
+        case 13: 
+            serial_printf("General protection fault\n");
+            break;
+        case 14: {
+            uint64_t fault_addr;
+            __asm__ volatile ("mov %%cr2, %0" : "=r"(fault_addr));
+            
+            serial_printf("Page fault at address: 0x%lx\n", fault_addr);
+            
+            if (fault_addr == 0x100000) {
+                serial_printf("*** Page fault at binary execution address 0x100000 ***\n");
+                serial_printf("The memory is not mapped or not executable!\n");
+            }
+            break;
+        }
+        default: 
+            serial_printf("Unhandled exception\n"); 
+            break;
     }
 
+    serial_printf("=== System Halted ===\n");
     __asm__ volatile ("cli\nhlt");
 }
 
