@@ -1,5 +1,17 @@
 #include <shell.h>
+#include <fat12.h>
 #include <stddef.h>
+#include <util.h>
+
+extern struct ide_device ide_devices[4]; // Change the number for more ide drives
+
+// Simple template for people who want to make their own commands
+
+/* 
+void cmd_name(int argc, char args[][MAX_ARG_LENGTH]) {
+
+}
+*/
 
 const shell_command_t commands[] = {
     {"hello", cmd_hello, "Display greeting", "hello [name]"},
@@ -9,6 +21,7 @@ const shell_command_t commands[] = {
     {"history", cmd_history, "Show command history", "history"},
     {"uptime", cmd_uptime, "Show system uptime", "uptime"},
     {"exit", cmd_exit, "Exit shell", "exit"},
+    {"format", cmd_format, "Format a drive", "format"},
     {NULL, NULL, NULL, NULL}  // Sentinel
 };
 
@@ -77,6 +90,44 @@ void cmd_history(int argc, char args[][MAX_ARG_LENGTH]) {
 
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]) {
     shell_print("System uptime: Unknown (uptime not implemented)\n");
+}
+
+void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
+    shell_print("Formatting drive: ");
+    
+    int drive_num = 0;  // Default to drive 0
+    
+    if (argc > 1) {
+        drive_num = char_to_int(args[1][0]);  // Get first char of drive arg
+        if (drive_num == -1) {
+            shell_print("Invalid drive number. Use 0-9.\n");
+            return;
+        }
+    }
+    
+    format_fat12((uint8_t)drive_num);
+
+    serial_printf("Boot_Check");
+
+    uint8_t boot_check[512];
+    if (ide_read_sectors(0, 1, 0, boot_check) == 0) {
+        serial_printf("Boot sector verification:\n");
+        serial_printf("Jump instruction: 0x%02X 0x%02X 0x%02X\n", boot_check[0], boot_check[1], boot_check[2]);
+        serial_printf("OEM name: ");
+        for (int i = 3; i < 11; i++) write_serial_char(boot_check[i]);
+        write_serial_char('\n');
+        serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
+
+        bpb_t12 *test_bpb = (bpb_t12 *)(boot_check + 11);
+        serial_printf("BPB verification:\n");
+        serial_printf("  bytes_per_sector: %u\n", test_bpb->bytes_per_sector);
+        serial_printf("  sectors_per_cluster: %u\n", test_bpb->sectors_per_cluster);
+        serial_printf("  num_fats: %u\n", test_bpb->num_fats);
+        serial_printf("  fat_size_16: %u\n", test_bpb->fat_size_16);
+        serial_printf("  root_entry_count: %u\n", test_bpb->root_entry_count);
+    }
+
+    shell_print_prompt();
 }
 
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]) {

@@ -84,6 +84,7 @@ void cmd_clear(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_echo(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_history(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_format(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
 // Command parser functions (from cmd_parser.c)

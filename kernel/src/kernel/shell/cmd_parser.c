@@ -8,11 +8,9 @@ void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc) {
     const char *p = command;
     
     while (*p && *argc < MAX_ARGS) {
-        // Skip whitespace
         while (*p == ' ' || *p == '\t') p++;
         if (!*p) break;
         
-        // Copy argument
         int j = 0;
         while (*p && *p != ' ' && *p != '\t' && j < MAX_ARG_LENGTH - 1) {
             args[*argc][j++] = *p++;
@@ -39,7 +37,6 @@ void parse_command(void) {
         return;
     }
     
-    // Find and execute command
     const shell_command_t *cmd = commands;
     while (cmd->name && strcmp(cmd->name, args[0]) != 0) {
         cmd++;
@@ -48,7 +45,7 @@ void parse_command(void) {
     if (cmd->name) {
         cmd->handler(argc, args);
         if (strcmp(args[0], "exit") == 0) {
-            return; // Don't redraw prompt after exit
+            return;
         }
     } else {
         shell_error("Unknown command");

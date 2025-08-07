@@ -17,7 +17,7 @@ size_t global_exec_size = 0x100000; // 1MB for binary execution
 /**
  * Runs a series of tests to verify FAT12 file operations.
  */
-void test_file_operations(uint8_t drive) {
+/*void test_file_operations(uint8_t drive) {
     serial_printf("\n=== Testing FAT12 File Operations ===\n");
 
     // Test 1: Write and read a small text file
@@ -125,7 +125,7 @@ void test_file_operations(uint8_t drive) {
     }
 
     serial_printf("\n=== File Operations Test Complete ===\n");
-}
+} */
 
 /**
  * Kernel entry point. Initializes all systems.
@@ -204,32 +204,7 @@ void kernel_main(void) {
     }
     serial_printf("Execution region allocated: %p (size: %zu bytes)\n", global_exec_region, global_exec_size);
 
-    // Initialize subsystems
-    if (acpi_init() != 0) write_serial("ACPI initialization failed\n");
     ide_initialize();
-
-    // Format the drive with FAT12 and verify boot sector
-    serial_printf("\nFormatting drive with FAT12...\n");
-    format_fat12(0);
-    serial_printf("FAT12 format complete\n");
-
-    uint8_t boot_check[512];
-    if (ide_read_sectors(0, 1, 0, boot_check) == 0) {
-        serial_printf("Boot sector verification:\n");
-        serial_printf("Jump instruction: 0x%02X 0x%02X 0x%02X\n", boot_check[0], boot_check[1], boot_check[2]);
-        serial_printf("OEM name: ");
-        for (int i = 3; i < 11; i++) write_serial_char(boot_check[i]);
-        write_serial_char('\n');
-        serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
-
-        bpb_t12 *test_bpb = (bpb_t12 *)(boot_check + 11);
-        serial_printf("BPB verification:\n");
-        serial_printf("  bytes_per_sector: %u\n", test_bpb->bytes_per_sector);
-        serial_printf("  sectors_per_cluster: %u\n", test_bpb->sectors_per_cluster);
-        serial_printf("  num_fats: %u\n", test_bpb->num_fats);
-        serial_printf("  fat_size_16: %u\n", test_bpb->fat_size_16);
-        serial_printf("  root_entry_count: %u\n", test_bpb->root_entry_count);
-    }
 
     // Init framebuffer and PCI
     init_fb();
@@ -244,21 +219,11 @@ void kernel_main(void) {
     uhci_init();
     serial_printf("uhci_init finished!\n");
 
-    // Run FAT12 file tests
-    test_file_operations(0);
-    serial_printf("test_file_operations complete\n");
-
-    fat12_write_file(0, "TEST.BIN", bin_x86_64_tools_test_bin, bin_x86_64_tools_test_bin_len);
-
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
     timer_wait_seconds(5);
 
     shell_init();
-
-    serial_printf("Binaries written to disk\n");
-
-    run_bin("TEST.BIN");
 
     uint64_t rax_value;
 

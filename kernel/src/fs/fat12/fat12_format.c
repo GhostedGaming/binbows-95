@@ -35,6 +35,7 @@ void format_fat12(uint8_t drive) {
     int total_sectors = ide_devices[drive].Size;
 
     if (total_sectors <= 0) {
+        serial_printf("%d\n", drive);
         serial_printf("Error: Invalid drive size\n");
         return;
     }
