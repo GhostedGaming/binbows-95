@@ -58,6 +58,7 @@ void shell_scroll_up(void);
 // Output functions
 void shell_print_color(const char *text, uint32_t color);
 void shell_print(const char *text);
+void shell_printf(const char *format, ...);
 void shell_error(const char *text);
 void shell_success(const char *text);
 
@@ -85,6 +86,7 @@ void cmd_echo(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_history(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_format(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
 // Command parser functions (from cmd_parser.c)

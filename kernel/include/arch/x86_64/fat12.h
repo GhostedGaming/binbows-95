@@ -69,7 +69,7 @@ static bool bpb_cached12 = false;
 static uint8_t cached_drive12 = 0xFF;
 
 // Function declarations
-void format_fat12(uint8_t drive);
+void format_fat12(uint8_t drive, ...);
 uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count);
 void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size);
 void fat12_write_dir_entry(uint8_t drive, bpb_t12* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size);

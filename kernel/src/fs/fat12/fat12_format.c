@@ -1,4 +1,5 @@
 #include <fat12.h>
+#include <stdarg.h>
 
 void fat_init(uint8_t drive, uint8_t reserved_sector_count, uint8_t num_fats, uint8_t fat_size_16) {
     uint8_t fat_sector[512];
@@ -25,7 +26,7 @@ void fat_init(uint8_t drive, uint8_t reserved_sector_count, uint8_t num_fats, ui
     serial_printf("FAT tables initialized\n");
 }
 
-void format_fat12(uint8_t drive) {
+void format_fat12(uint8_t drive, ...) {
     uint16_t bytes_per_sector = 512;
     uint8_t sectors_per_cluster = 1;
     uint8_t reserved_sector_count = 1;
@@ -33,6 +34,11 @@ void format_fat12(uint8_t drive) {
     uint16_t root_entry_count = 224;
     uint16_t fat_size_16 = 9;
     int total_sectors = ide_devices[drive].Size;
+
+    va_list args;
+    va_start(args, drive);
+
+    char *oem_name = va_arg(args, char *);
 
     if (total_sectors <= 0) {
         serial_printf("%d\n", drive);
@@ -83,7 +89,7 @@ void format_fat12(uint8_t drive) {
     boot_sector[2] = 0x90;
 
     // OEM name
-    memcpy(&boot_sector[3], "binbows", 8);
+    memcpy(&boot_sector[3], oem_name, 8);
 
     // BPB starts at offset 11
     uint8_t *bpb_ptr = &boot_sector[11];

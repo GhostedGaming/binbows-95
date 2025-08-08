@@ -22,6 +22,7 @@ const shell_command_t commands[] = {
     {"uptime", cmd_uptime, "Show system uptime", "uptime"},
     {"exit", cmd_exit, "Exit shell", "exit"},
     {"format", cmd_format, "Format a drive", "format"},
+    {"lsdri", cmd_lsdri, "list drives", "lsdri"},
     {NULL, NULL, NULL, NULL}  // Sentinel
 };
 
@@ -95,26 +96,40 @@ void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]) {
 void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
     shell_print("Formatting drive: ");
     
-    int drive_num = 0;  // Default to drive 0
+    int drive_num = NULL;
     
     if (argc > 1) {
-        drive_num = char_to_int(args[1][0]);  // Get first char of drive arg
+        drive_num = char_to_int(args[1][0]);
         if (drive_num == -1) {
             shell_print("Invalid drive number. Use 0-9.\n");
             return;
         }
     }
-    
-    format_fat12((uint8_t)drive_num);
+
+    if (argc > 2) {
+        format_fat12((uint8_t)drive_num, args[2]);
+    } else {
+        format_fat12((uint8_t)drive_num, "drive");
+    }
 
     serial_printf("Boot_Check");
 
+    char drive_name[11] = "";
     uint8_t boot_check[512];
     if (ide_read_sectors(0, 1, 0, boot_check) == 0) {
         serial_printf("Boot sector verification:\n");
         serial_printf("Jump instruction: 0x%02X 0x%02X 0x%02X\n", boot_check[0], boot_check[1], boot_check[2]);
         serial_printf("OEM name: ");
-        for (int i = 3; i < 11; i++) write_serial_char(boot_check[i]);
+
+        int name_index = 0;
+        for (int i = 3; i < 11; i++) {
+            write_serial_char(boot_check[i]);
+            drive_name[name_index] = boot_check[i];
+            name_index++;
+        }
+
+        shell_print(drive_name);
+
         write_serial_char('\n');
         serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
 
@@ -128,6 +143,17 @@ void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
     }
 
     shell_print_prompt();
+}
+
+void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
+    for (int i = 0; i < 4; i++) {
+        ide_devices[i].Reserved = 0;
+        ide_identify(i / 2, i % 2);
+        if (ide_devices[i].Reserved) {
+            shell_printf("Found IDE drive %d: %s, Size: %u sectors\n",
+                        i, ide_devices[i].Model, ide_devices[i].Size);
+        }
+    }
 }
 
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]) {

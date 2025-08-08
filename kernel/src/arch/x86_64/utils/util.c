@@ -58,3 +58,70 @@ int char_to_int(char c) {
     }
     return -1;
 }
+
+char* str_append(const char* str1, const char* str2) {
+    static char buffer[1024];
+    
+    if (str1 == NULL || str2 == NULL) {
+        return NULL;
+    }
+    
+    strcpy(buffer, str1);
+    strcat(buffer, str2);
+    
+    return buffer;
+}
+
+int atoi(const char *str) {
+    if (!str) return 0;
+    
+    int result = 0;
+    int sign = 1;
+    int i = 0;
+    
+    while (str[i] == ' ' || str[i] == '\t') i++;
+    
+    if (str[i] == '-') {
+        sign = -1;
+        i++;
+    } else if (str[i] == '+') {
+        i++;
+    }
+    
+    while (str[i] >= '0' && str[i] <= '9') {
+        result = result * 10 + (str[i] - '0');
+        i++;
+    }
+    
+    return result * sign;
+}
+
+int isdigit(int c) {
+    return (c >= '0' && c <= '9');
+}
+
+int isalpha(int c) {
+    return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'));
+}
+
+int isalnum(int c) {
+    return isalpha(c) || isdigit(c);
+}
+
+int isspace(int c) {
+    return (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v');
+}
+
+int toupper(int c) {
+    if (c >= 'a' && c <= 'z') {
+        return c - 'a' + 'A';
+    }
+    return c;
+}
+
+int tolower(int c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c - 'A' + 'a';
+    }
+    return c;
+}

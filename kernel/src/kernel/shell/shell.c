@@ -3,20 +3,18 @@
 #include <framebuffer.h>
 #include <util.h>
 #include <shell.h>
+#include <stdarg.h>
 
-// Define the constants
 const int line_height = 16;
 const int char_width = 8;
-const uint32_t text_color = 0xFFFFFFFF;
-const uint32_t bg_color = 0xFF000000;
-const uint32_t cursor_color = 0xFF00FF00;
-const uint32_t error_color = 0xFFFF0000;
-const uint32_t success_color = 0xFF00FF00;
+#define text_color      rgb_to_color(255, 255, 255)
+#define bg_color        rgb_to_color(0, 0, 0)
+#define cursor_color    rgb_to_color(255, 255, 255)
+#define error_color     rgb_to_color(100, 0, 0)
+#define success_color   rgb_to_color(0, 100, 0)
 
-// Define the shell state
 shell_state_t shell_state = {0};
 
-// Forward declarations for static functions
 static void shell_print_welcome(void);
 static void shell_insert_char(char ch);
 static void shell_remove_chars(int start, int count);
@@ -140,6 +138,140 @@ void shell_print_color(const char *text, uint32_t color) {
 
 void shell_print(const char *text) {
     shell_print_color(text, text_color);
+} 
+
+static void shell_utoa(unsigned long val, char *buf, int base) {
+    char *ptr = buf, *ptr1 = buf, tmp;
+    do {
+        *ptr++ = "0123456789abcdef"[val % base];
+        val /= base;
+    } while (val);
+    *ptr-- = '\0';
+    while (ptr1 < ptr) {
+        tmp = *ptr;
+        *ptr-- = *ptr1;
+        *ptr1++ = tmp;
+    }
+}
+
+static void shell_itoa(long val, char *buf, int base) {
+    if (val < 0 && base == 10) {
+        *buf++ = '-';
+        shell_utoa((unsigned long)(-val), buf, base);
+    } else {
+        shell_utoa((unsigned long)val, buf, base);
+    }
+}
+
+static void shell_write_padded(const char *str, int width, char pad) {
+    int len = 0;
+    const char *s = str;
+    while (*s++) len++;
+    
+    // Print padding first
+    while (len < width--) {
+        char pad_str[2] = {pad, '\0'};
+        shell_print(pad_str);
+    }
+    shell_print(str);
+}
+
+void shell_printf(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    
+    char buffer[64];
+    const char *fmt = format;
+    
+    while (*fmt) {
+        if (*fmt == '%') {
+            fmt++;
+            
+            char pad_char = ' ';
+            int width = 0;
+            int long_flag = 0;
+            
+            if (*fmt == '0') {
+                pad_char = '0';
+                fmt++;
+            }
+            
+            while (*fmt >= '0' && *fmt <= '9') {
+                width = width * 10 + (*fmt++ - '0');
+            }
+            
+            if (*fmt == 'l') {
+                long_flag = 1;
+                fmt++;
+            }
+            
+            switch (*fmt) {
+                case 'd':
+                case 'i': {
+                    long val = long_flag ? va_arg(args, long) : va_arg(args, int);
+                    shell_itoa(val, buffer, 10);
+                    shell_write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'u': {
+                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
+                    shell_utoa(val, buffer, 10);
+                    shell_write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'x': {
+                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
+                    shell_utoa(val, buffer, 16);
+                    shell_write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'X': {
+                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
+                    shell_utoa(val, buffer, 16);
+                    // Convert to uppercase
+                    for (char *p = buffer; *p; p++) {
+                        if (*p >= 'a' && *p <= 'f') *p = *p - 'a' + 'A';
+                    }
+                    shell_write_padded(buffer, width, pad_char);
+                    break;
+                }
+                case 'p': {
+                    void *ptr = va_arg(args, void *);
+                    shell_print("0x");
+                    shell_utoa((uintptr_t)ptr, buffer, 16);
+                    shell_write_padded(buffer, width ? width : 16, '0');
+                    break;
+                }
+                case 'c': {
+                    char ch = (char)va_arg(args, int);
+                    char temp[2] = {ch, '\0'};
+                    shell_print(temp);
+                    break;
+                }
+                case 's': {
+                    char *str = va_arg(args, char *);
+                    if (!str) str = "(null)";
+                    shell_print(str);
+                    break;
+                }
+                case '%':
+                    shell_print("%");
+                    break;
+                default:
+                    shell_print("%");
+                    char temp[2] = {*fmt, '\0'};
+                    shell_print(temp);
+                    break;
+            }
+            fmt++;
+        } else {
+            char temp[2] = {*fmt, '\0'};
+            shell_print(temp);
+            fmt++;
+        }
+    }
+    
+    va_end(args);
 }
 
 void shell_error(const char *text) {
