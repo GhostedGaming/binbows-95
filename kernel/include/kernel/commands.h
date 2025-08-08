@@ -10,9 +10,12 @@ void cmd_clear(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_echo(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_history(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_format(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]); 
+void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
-// Command table - defined in commands.c
 extern const shell_command_t commands[];
 
 #endif // COMMANDS_H

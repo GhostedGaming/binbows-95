@@ -1,8 +1,10 @@
 #include <fat12.h>
 
-int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
+int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data) {
     bpb_t12 bpb;
     
+    uint32_t size = strlen((const char*)data);
+
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat12_write_file\n");
         return -1;
@@ -182,4 +184,112 @@ void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
             break;
         }
     }
+}
+
+char *fat12_read_files(uint8_t drive) {
+    static char file_list[4096];
+    
+    bpb_t12 bpb;
+    if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
+        serial_printf("Failed to read or validate BPB\n");
+        strcpy(file_list, "Error: Failed to read BPB\n");
+        return file_list;
+    }
+    
+    uint32_t root_dir_sectors = ((bpb.root_entry_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
+    uint32_t fat_size = bpb.fat_size_16;
+    uint32_t root_dir_lba = bpb.reserved_sector_count + (bpb.num_fats * fat_size);
+    uint32_t data_start_lba = root_dir_lba + root_dir_sectors;
+    
+    uint8_t sector[512];
+    file_list[0] = '\0';
+    size_t remaining = sizeof(file_list) - 1;
+    size_t used = 0;
+    
+    for (uint32_t i = 0; i < root_dir_sectors; i++) {
+        if (ide_read_sectors(drive, 1, root_dir_lba + i, sector) != 0) {
+            serial_printf("Failed to read root directory sector %u\n", i);
+            continue;
+        }
+        
+        for (uint32_t j = 0; j < 512; j += 32) {
+            fat12_dir_entry_t *entry = (fat12_dir_entry_t *)&sector[j];
+            
+            if (entry->name[0] == 0x00) {
+                return file_list;
+            }
+            
+            if (entry->name[0] == (char)0xE5 || 
+                (entry->attr & ATTR_VOLUME_ID) || 
+                (entry->attr & ATTR_DIRECTORY)) {
+                continue;
+            }
+            
+            char name[13] = {0};
+            int name_idx = 0;
+            
+            int name_end = 8;
+            while (name_end > 0 && entry->name[name_end - 1] == ' ') {
+                name_end--;
+            }
+            for (int k = 0; k < name_end; k++) {
+                name[name_idx++] = entry->name[k];
+            }
+            
+            if (entry->name[8] != ' ') {
+                name[name_idx++] = '.';
+                int ext_end = 11;
+                while (ext_end > 8 && entry->name[ext_end - 1] == ' ') {
+                    ext_end--;
+                }
+                for (int k = 8; k < ext_end; k++) {
+                    name[name_idx++] = entry->name[k];
+                }
+            }
+            name[name_idx] = '\0';
+            
+            char temp[64];
+            int len = 0;
+            
+            strcpy(temp, "Name: ");
+            strcat(temp, name);
+            strcat(temp, " Size: ");
+            
+            char size_str[16];
+            uint32_t size = entry->file_size;
+            int size_len = 0;
+            
+            if (size == 0) {
+                size_str[size_len++] = '0';
+            } else {
+                char rev_str[16];
+                int rev_len = 0;
+                while (size > 0) {
+                    rev_str[rev_len++] = '0' + (size % 10);
+                    size /= 10;
+                }
+                for (int x = 0; x < rev_len; x++) {
+                    size_str[size_len++] = rev_str[rev_len - 1 - x];
+                }
+            }
+            size_str[size_len] = '\0';
+            
+            strcat(temp, size_str);
+            strcat(temp, " bytes\n");
+            
+            len = strlen(temp);
+            
+            if (used + len >= remaining) {
+                strcat(file_list, "[TRUNCATED - too many files]\n");
+                return file_list;
+            }
+            
+            strcat(file_list, temp);
+            used += len;
+            
+            serial_printf("File: %s Size: %u bytes\n", name, entry->file_size);
+        }
+    }
+    
+    return file_list;
 }

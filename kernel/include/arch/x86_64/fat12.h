@@ -73,7 +73,7 @@ void format_fat12(uint8_t drive, ...);
 uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count);
 void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size);
 void fat12_write_dir_entry(uint8_t drive, bpb_t12* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size);
-int fat12_write_file(uint8_t drive, const char *filename, const uint8_t *data, uint32_t size);
+int fat12_write_file(uint8_t drive, const char *filename, const uint8_t *data);
 
 // Internal helper functions
 int read_bpb(uint8_t drive, bpb_t12 *bpb);
@@ -85,5 +85,7 @@ int fat12_find_free_root_dir_entry(uint8_t drive, bpb_t12* bpb);
 void fat12_format_filename(const char* filename, char* fat_name);
 void format_filename_for_compare(const char* filename, char* fat_name);
 bool validate_bpb(bpb_t12 *bpb);
+char *fat12_read_files(uint8_t drive);
+
 
 #endif // FAT12_H

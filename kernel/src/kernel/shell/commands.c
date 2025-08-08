@@ -23,6 +23,8 @@ const shell_command_t commands[] = {
     {"exit", cmd_exit, "Exit shell", "exit"},
     {"format", cmd_format, "Format a drive", "format"},
     {"lsdri", cmd_lsdri, "list drives", "lsdri"},
+    {"lsf", cmd_lsf, "list files", "lsf"},
+    {"mkfile", cmd_mkfile, "make a file", "mkfile"},
     {NULL, NULL, NULL, NULL}  // Sentinel
 };
 
@@ -154,6 +156,27 @@ void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
                         i, ide_devices[i].Model, ide_devices[i].Size);
         }
     }
+}
+
+void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]) {
+    if (argc < 2) {
+        shell_print("Please pass the drive number\n");
+        return;
+    }
+
+    uint8_t drive = (uint8_t)(args[1][0] - '0');
+    shell_printf(fat12_read_files(drive) + '\n');
+}
+
+void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]) {
+    if (argc < 3) {
+        shell_print("Usage: mkfile <drive_number> <filename>\n");
+        return;
+    }
+
+    uint8_t drive = (uint8_t)(args[1][0] - '0');
+    fat12_write_file(drive, args[2], (const uint8_t*)"");
+    shell_printf("File made %s\n", args[2]);
 }
 
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]) {

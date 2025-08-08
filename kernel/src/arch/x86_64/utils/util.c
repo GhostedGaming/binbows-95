@@ -59,6 +59,28 @@ int char_to_int(char c) {
     return -1;
 }
 
+char* strcat(char* dest, const char* src) {
+    if (!dest || !src) {
+        return dest;
+    }
+    
+    char* original_dest = dest;
+    
+    while (*dest) {
+        dest++;
+    }
+
+    while (*src) {
+        *dest = *src;
+        dest++;
+        src++;
+    }
+    
+    *dest = '\0';
+    
+    return original_dest;
+}
+
 char* str_append(const char* str1, const char* str2) {
     static char buffer[1024];
     

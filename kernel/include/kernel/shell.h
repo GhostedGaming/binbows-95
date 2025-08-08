@@ -87,9 +87,10 @@ void cmd_history(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_format(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
-// Command parser functions (from cmd_parser.c)
 void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc);
 void parse_command(void);
 
