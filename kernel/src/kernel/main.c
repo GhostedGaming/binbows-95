@@ -23,7 +23,6 @@ void kernel_main(void) {
     serial_printf("GDT loaded\n");
 
     idt_init();
-    syscall_init();
     install_exceptions();
     init_timer_irq();
     init_keyboard_irq();

@@ -26,10 +26,6 @@ extern void isr30(void), isr31(void);
 
 extern void irq0(void); // Timer
 extern void irq1(void); // Keyboard
-
-// Syscall assembly entry point (defined in syscall.asm)
-extern void syscall_entry(void);
-
 // Write to MSR
 static inline void write_msr(uint32_t msr, uint64_t value) {
     uint32_t low = (uint32_t)(value & 0xFFFFFFFF);
@@ -170,14 +166,4 @@ uint64_t syscall_handler(uint64_t syscall_num,
             write_serial("Unknown syscall\n");
             return (uint64_t)-1;
     }
-}
-
-void syscall_init(void) {
-    uint64_t star = ((uint64_t)0x08 << 32) | ((uint64_t)0x10 << 48);
-    write_msr(IA32_STAR, star);
-    write_msr(IA32_LSTAR, (uint64_t)syscall_entry);
-    write_msr(IA32_FMASK, 0x200);
-    write_msr(IA32_KERNEL_GS_BASE, 0);
-    
-    write_serial("Syscall MSRs initialized\n");
 }

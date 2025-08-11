@@ -85,14 +85,6 @@ void draw_text(int x, int y, const char *str, uint32_t color, bool clear) {
     }
 }
 
-// Additional functions from draw.c
-
-static int string_length(const char *str) {
-    int len = 0;
-    while (str[len] != '\0') len++;
-    return len;
-}
-
 void draw_char_with_bg(int x, int y, char c, uint32_t fg_color, uint32_t bg_color) {
     if (c >= 32 && c <= 126) {
         const uint8_t *char_bitmap = font8x16[(unsigned char)c - 32];
@@ -132,21 +124,21 @@ void draw_text_with_bg(int x, int y, const char *str, uint32_t fg_color, uint32_
 }
 
 void draw_text_centered(int y, const char *str, uint32_t color) {
-    int len = string_length(str);
+    int len = strlen(str);
     int str_width = len * FONT_WIDTH;
     int cx = (fb_width - str_width) / 2;
     draw_text(cx, y, str, color, false);
 }
 
 void draw_text_centered_with_bg(int y, const char *str, uint32_t fg_color, uint32_t bg_color) {
-    int len = string_length(str);
+    int len = strlen(str);
     int str_width = len * FONT_WIDTH;
     int cx = (fb_width - str_width) / 2;
     draw_text_with_bg(cx, y, str, fg_color, bg_color);
 }
 
 void draw_text_center_screen(const char *str, uint32_t color) {
-    int len = string_length(str);
+    int len = strlen(str);
     int str_width = len * FONT_WIDTH;
     int cx = (fb_width - str_width) / 2;
     int cy = (fb_height - FONT_HEIGHT) / 2;
@@ -154,7 +146,7 @@ void draw_text_center_screen(const char *str, uint32_t color) {
 }
 
 void draw_text_center_screen_with_bg(const char *str, uint32_t fg_color, uint32_t bg_color) {
-    int len = string_length(str);
+    int len = strlen(str);
     int str_width = len * FONT_WIDTH;
     int cx = (fb_width - str_width) / 2;
     int cy = (fb_height - FONT_HEIGHT) / 2;
@@ -180,8 +172,6 @@ void remove_rect(int x, int y, int width, int height, uint32_t bg_color) {
         }
     }
 }
-
-// Cursor movement functions
 
 uint16_t move_cursor_right(uint16_t amount) {
     if (cursor_position_x + amount < fb_width) {

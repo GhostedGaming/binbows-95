@@ -3,15 +3,7 @@
 #include <stddef.h>
 #include <util.h>
 
-extern struct ide_device ide_devices[4]; // Change the number for more ide drives
-
-// Simple template for people who want to make their own commands
-
-/* 
-void cmd_name(int argc, char args[][MAX_ARG_LENGTH]) {
-
-}
-*/
+extern struct ide_device ide_devices[4];
 
 const shell_command_t commands[] = {
     {"hello", cmd_hello, "Display greeting", "hello [name]"},
@@ -25,10 +17,9 @@ const shell_command_t commands[] = {
     {"lsdri", cmd_lsdri, "list drives", "lsdri"},
     {"lsf", cmd_lsf, "list files", "lsf"},
     {"mkfile", cmd_mkfile, "make a file", "mkfile"},
-    {NULL, NULL, NULL, NULL}  // Sentinel
+    {NULL, NULL, NULL, NULL}
 };
 
-// Command implementations
 void cmd_help(int argc, char args[][MAX_ARG_LENGTH]) {
     shell_print("Available commands:\n");
     for (const shell_command_t *cmd = commands; cmd->name; cmd++) {

@@ -3,7 +3,6 @@
 
 #include <stdint.h>
 
-// Constants
 #define MAX_INPUT_LENGTH 256
 #define MAX_HISTORY_ENTRIES 10
 #define MAX_ARGS 8
@@ -11,7 +10,6 @@
 #define CURSOR_BLINK_RATE 30
 #define TAB_SIZE 4
 
-// Display constants (extern declarations - defined in shell.c)
 extern const int line_height;
 extern const int char_width;
 extern const uint32_t text_color;
@@ -20,7 +18,6 @@ extern const uint32_t cursor_color;
 extern const uint32_t error_color;
 extern const uint32_t success_color;
 
-// Command structure for cleaner command handling
 typedef struct {
     const char *name;
     void (*handler)(int argc, char args[][MAX_ARG_LENGTH]);
@@ -28,7 +25,6 @@ typedef struct {
     const char *usage;
 } shell_command_t;
 
-// Shell state structure
 typedef struct {
     char command_buffer[MAX_INPUT_LENGTH];
     char input_buffer[MAX_INPUT_LENGTH];
@@ -41,13 +37,9 @@ typedef struct {
     int cursor_visible;
 } shell_state_t;
 
-// Global shell state
 extern shell_state_t shell_state;
-
-// Commands array
 extern const shell_command_t commands[];
 
-// Core shell functions
 void shell_init(void);
 void shell_print_prompt(void);
 void shell_draw_input_line(void);
@@ -55,14 +47,12 @@ void shell_update_cursor(void);
 void shell_newline(void);
 void shell_scroll_up(void);
 
-// Output functions
 void shell_print_color(const char *text, uint32_t color);
 void shell_print(const char *text);
 void shell_printf(const char *format, ...);
 void shell_error(const char *text);
 void shell_success(const char *text);
 
-// Input handling
 char *input(char received);
 void shell_backspace(void);
 void shell_delete(void);
@@ -74,11 +64,9 @@ void shell_clear_input(void);
 void shell_cancel_input(void);
 void shell_redraw_input(void);
 
-// History functions
 void shell_history_up(void);
 void shell_history_down(void);
 
-// Command implementations (from commands.c)
 void cmd_help(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_hello(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_clear(int argc, char args[][MAX_ARG_LENGTH]);
@@ -94,4 +82,4 @@ void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc);
 void parse_command(void);
 
-#endif // SHELL_H
+#endif

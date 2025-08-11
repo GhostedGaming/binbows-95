@@ -10,8 +10,8 @@ const int char_width = 8;
 #define text_color      rgb_to_color(255, 255, 255)
 #define bg_color        rgb_to_color(0, 0, 0)
 #define cursor_color    rgb_to_color(255, 255, 255)
-#define error_color     rgb_to_color(100, 0, 0)
-#define success_color   rgb_to_color(0, 100, 0)
+#define error_color     rgb_to_color(255, 0, 0)
+#define success_color   rgb_to_color(0, 255, 0)
 
 shell_state_t shell_state = {0};
 
@@ -41,14 +41,12 @@ void shell_redraw_input(void) {
     int prompt_x = get_cursor_x() - (2 * char_width);
     int prompt_y = get_cursor_y();
     
-    // Clear and redraw line in one pass
     draw_rect(prompt_x, prompt_y, get_screen_width() - prompt_x, line_height, bg_color);
     draw_text(prompt_x, prompt_y, "$ ", text_color, false);
     
     int text_x = prompt_x + (2 * char_width);
     draw_text(text_x, prompt_y, shell_state.input_buffer, text_color, false);
     
-    // Draw cursor efficiently
     if (shell_state.cursor_visible) {
         int cursor_x = text_x + (shell_state.cursor_pos * char_width);
         draw_rect(cursor_x, prompt_y, char_width, line_height, cursor_color);
@@ -85,12 +83,10 @@ void shell_scroll_up(void) {
     int height = get_screen_height();
     int pitch = fb_pitch;
     
-    // Move screen content up by one line
     for (int y = 0; y < height - line_height; y++) {
         memmove(&fb[y * pitch], &fb[(y + line_height) * pitch], width * sizeof(uint32_t));
     }
     
-    // Clear bottom lines
     for (int y = height - line_height; y < height; y++) {
         for (int x = 0; x < width; x++) {
             fb[y * pitch + x] = bg_color;
@@ -103,8 +99,7 @@ void shell_scroll_up(void) {
 void shell_print_color(const char *text, uint32_t color) {
     if (!text) return;
     
-    const char *p = text;
-    while (*p) {
+    for (const char *p = text; *p; p++) {
         switch (*p) {
             case '\n':
                 shell_newline();
@@ -132,7 +127,6 @@ void shell_print_color(const char *text, uint32_t color) {
                 }
                 break;
         }
-        p++;
     }
 }
 
@@ -165,10 +159,8 @@ static void shell_itoa(long val, char *buf, int base) {
 
 static void shell_write_padded(const char *str, int width, char pad) {
     int len = 0;
-    const char *s = str;
-    while (*s++) len++;
+    for (const char *s = str; *s; s++) len++;
     
-    // Print padding first
     while (len < width--) {
         char pad_str[2] = {pad, '\0'};
         shell_print(pad_str);
@@ -228,7 +220,6 @@ void shell_printf(const char *format, ...) {
                 case 'X': {
                     unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
                     shell_utoa(val, buffer, 16);
-                    // Convert to uppercase
                     for (char *p = buffer; *p; p++) {
                         if (*p >= 'a' && *p <= 'f') *p = *p - 'a' + 'A';
                     }
@@ -288,7 +279,6 @@ void shell_success(const char *text) {
 static void shell_insert_char(char ch) {
     if (shell_state.input_index >= MAX_INPUT_LENGTH - 1) return;
     
-    // Shift characters right
     memmove(&shell_state.input_buffer[shell_state.cursor_pos + 1],
             &shell_state.input_buffer[shell_state.cursor_pos],
             shell_state.input_index - shell_state.cursor_pos);
@@ -363,7 +353,6 @@ void shell_clear_input(void) {
 static void shell_add_to_history(const char *command) {
     if (!strlen(command)) return;
     
-    // Check if same as previous command
     int prev_index = (shell_state.history_index - 1 + MAX_HISTORY_ENTRIES) % MAX_HISTORY_ENTRIES;
     if (strlen(shell_state.history[prev_index]) > 0 && 
         strcmp(shell_state.history[prev_index], command) == 0) {

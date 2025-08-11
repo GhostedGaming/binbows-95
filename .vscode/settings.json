@@ -15,6 +15,7 @@
         "fat12.h": "c",
         "util.h": "c",
         "shell.h": "c",
-        "stddef.h": "c"
+        "stddef.h": "c",
+        "idt.h": "c"
     }
 }
