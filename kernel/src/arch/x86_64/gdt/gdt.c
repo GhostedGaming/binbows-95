@@ -4,7 +4,7 @@
 #include <gdt.h>
 #include <mem.h>
 
-#define GDT_ENTRIES 7  // Changed to 7 to accommodate TSS taking 2 entries
+#define GDT_ENTRIES 7
 
 static struct gdt_entry gdt[GDT_ENTRIES];
 static struct gdt_ptr gdt_pointer;

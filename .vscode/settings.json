@@ -16,6 +16,7 @@
         "util.h": "c",
         "shell.h": "c",
         "stddef.h": "c",
-        "idt.h": "c"
+        "idt.h": "c",
+        "gdt.h": "c"
     }
 }

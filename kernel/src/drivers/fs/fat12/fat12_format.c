@@ -120,14 +120,12 @@ void format_fat12(uint8_t drive, ...) {
     *(uint8_t*)(bpb_ptr + 26)  = 0;                     // reserved1
     *(uint8_t*)(bpb_ptr + 27)  = 0x29;                  // boot_signature
     *(uint32_t*)(bpb_ptr + 28) = 0x12345678;            // volume_id
-    memcpy(bpb_ptr + 32, "NO NAME    ", 11);           // volume_label
-    memcpy(bpb_ptr + 43, "FAT12   ", 8);               // file_system_type
+    memcpy(bpb_ptr + 32, "NO NAME    ", 11);            // volume_label
+    memcpy(bpb_ptr + 43, "FAT12   ", 8);                // file_system_type
 
-    // Boot signature
     boot_sector[510] = 0x55;
     boot_sector[511] = 0xAA;
 
-    // Write boot sector
     ide_write_sectors(drive, 1, 0, boot_sector);
     serial_printf("BPB sector written\n");
 
@@ -141,10 +139,8 @@ void format_fat12(uint8_t drive, ...) {
     serial_printf("  num_fats: %u\n", verify_bpb->num_fats);
     serial_printf("  fat_size_16: %u\n", verify_bpb->fat_size_16);
 
-    // Initialize FAT tables
     fat_init(drive, reserved_sector_count, num_fats, fat_size_16);
 
-    // Initialize root directory
     root_dir_sectors = ((root_entry_count * 32) + (bytes_per_sector - 1)) / bytes_per_sector;
     uint32_t root_dir_lba = reserved_sector_count + (num_fats * fat_size_16);
     uint8_t zero_sector[512];
@@ -156,6 +152,5 @@ void format_fat12(uint8_t drive, ...) {
 
     serial_printf("Root_dir written\n");
     
-    // Clear BPB cache to force re-read
     bpb_cached12 = false;
 }

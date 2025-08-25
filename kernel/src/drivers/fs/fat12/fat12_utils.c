@@ -2,7 +2,7 @@
 
 void fat12_format_filename(const char* filename, char* fat_name) {
     memset(fat_name, ' ', 11);
-    fat_name[11] = '\0';  // Null terminate for debugging
+    fat_name[11] = '\0';
     
     int name_len = 0;
     int ext_len = 0;
@@ -59,7 +59,6 @@ bool validate_bpb(bpb_t12 *bpb) {
 }
 
 int read_bpb(uint8_t drive, bpb_t12 *bpb) {
-    // Use cached BPB if available for the same drive
     if (bpb_cached12 && cached_drive12 == drive) {
         memcpy(bpb, &cached_bpb12, sizeof(bpb_t12));
         return 0;
@@ -70,7 +69,6 @@ int read_bpb(uint8_t drive, bpb_t12 *bpb) {
         return -1;
     }
     
-    // Verify boot signature
     if (boot_sector[510] != 0x55 || boot_sector[511] != 0xAA) {
         serial_printf("Invalid boot signature: 0x%02X%02X\n", boot_sector[511], boot_sector[510]);
         return -1;
@@ -78,7 +76,6 @@ int read_bpb(uint8_t drive, bpb_t12 *bpb) {
     
     memcpy(bpb, boot_sector + 11, sizeof(bpb_t12));
     
-    // Cache the BPB
     memcpy(&cached_bpb12, bpb, sizeof(bpb_t12));
     bpb_cached12 = true;
     cached_drive12 = drive;

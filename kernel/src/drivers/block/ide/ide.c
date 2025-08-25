@@ -13,7 +13,7 @@ uint8_t ide_buf[512];
  * ============================================================================ */
 
 void ide_initialize(void) {
-    serial_printf("ide_initialize was called\n");
+    serial_printf("Initializing IDE driver\n");
     channels[ATA_PRIMARY].base  = 0x1F0;
     channels[ATA_PRIMARY].ctrl  = 0x3F6;
     channels[ATA_PRIMARY].bmide = 0;
