@@ -103,7 +103,7 @@ void kernel_main(void) {
 
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
-    timer_wait_seconds(1);
+    timer_wait_ms(500);
 
     shell_init();
 
