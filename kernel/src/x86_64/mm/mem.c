@@ -1,315 +1,177 @@
 #include <stdint.h>
+#include <stddef.h>
 #include <limine.h>
 #include <mem.h>
 #include <serial.h>
 
-//====================Limine stuff===================================
-extern volatile struct limine_hhdm_request hhdm_request;
 extern volatile struct limine_memmap_request memmap_request;
+extern volatile struct limine_hhdm_request hhdm_request;
 
-//====================Paging Constants==============================
-#define PAGE_SIZE 0x1000
-#define PAGE_PRESENT 0x1
-#define PAGE_WRITE   0x2
-#define PAGE_USER    0x4
-#define HHDM_OFFSET (uint64_t)hhdm_request.response->offset
+static free_list_block *free_list_head = NULL;
 
-//====================Memory Map Types===============================
-#define LIMINE_MEMMAP_USABLE 0
-#define LIMINE_MEMMAP_RESERVED 1
-#define LIMINE_MEMMAP_ACPI_RECLAIMABLE 2
-#define LIMINE_MEMMAP_ACPI_NVS 3
-#define LIMINE_MEMMAP_BAD_MEMORY 4
-#define LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE 5
-#define LIMINE_MEMMAP_KERNEL_AND_MODULES 6
-#define LIMINE_MEMMAP_FRAMEBUFFER 7
+#define MIN_ALLOC_SIZE 16
+#define ALIGN_SIZE 16
 
-//====================Early Memory Allocator========================
-static uint8_t* early_alloc_base = NULL;
-static size_t early_alloc_size = 0;
-static size_t early_alloc_used = 0;
+uint32_t page_directory[1024] __attribute__((aligned(4096)));
 
-static void early_alloc_init(void* base, size_t size) {
-    early_alloc_base = (uint8_t*)base;
-    early_alloc_size = size;
-    early_alloc_used = 0;
-    serial_printf("Early allocator initialized: base=0x%lx size=0x%lx\n", 
-                 (uint64_t)base, size);
+static inline void *phys_to_virt(uint64_t phys) {
+    return (void *)(phys + hhdm_request.response->offset);
 }
 
-static void* early_alloc(size_t size) {
-    // Align to page boundary
-    size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-    
-    if (early_alloc_used + size > early_alloc_size) {
-        serial_printf("Early allocator out of memory! Used: 0x%lx, Requested: 0x%lx, Total: 0x%lx\n",
-                     early_alloc_used, size, early_alloc_size);
-        return NULL;
+static size_t align_up(size_t size, size_t alignment) {
+    return (size + alignment - 1) & ~(alignment - 1);
+}
+
+void init_allocator() {
+    if (!memmap_request.response) {
+        serial_printf("Memmap response was null\n");
+        return;
     }
-    
-    void* result = early_alloc_base + early_alloc_used;
-    early_alloc_used += size;
-    
-    memset(result, 0, size);
-    return result;
-}
+    if (!hhdm_request.response) {
+        serial_printf("HHDM not available; map memory or use an identity-mapped bump allocator first.\n");
+        return;
+    }
 
-//====================Paging Helper Functions========================
-static inline void load_cr3(uint64_t pml4_phys) {
-    asm volatile ("mov %0, %%cr3" :: "r"(pml4_phys) : "memory");
-}
+    uint64_t hhdm = hhdm_request.response->offset;
+    struct limine_memmap_response *memmap = memmap_request.response;
 
-static uint64_t* alloc_page_table(void) {
-    void* page = early_alloc(PAGE_SIZE);
-    if (!page) return NULL;
-    return (uint64_t*)page;
-}
+    uint64_t total_ram = 0;
+    serial_printf("Looping through memory\n");
+    for (size_t i = 0; i < memmap->entry_count; ++i) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
+        serial_printf("Entry %lu: base=0x%lx, length=%lu, type=%lu\n",
+                      i, entry->base, entry->length, entry->type);
+        if (entry->type == LIMINE_MEMMAP_USABLE) total_ram += entry->length;
+    }
+    serial_printf("Memory: %lu MiB\n", total_ram / (1024 * 1024));
 
-static void map_page(uint64_t* pml4, uint64_t virt_addr, uint64_t phys_addr, uint64_t flags) {
-    uint64_t hhdm_offset = (uint64_t)hhdm_request.response->offset;
+    free_list_head = NULL;
+    int blocks_added = 0;
 
-    int pml4_i = (virt_addr >> 39) & 0x1FF;
-    int pdpt_i = (virt_addr >> 30) & 0x1FF;
-    int pd_i   = (virt_addr >> 21) & 0x1FF;
-    int pt_i   = (virt_addr >> 12) & 0x1FF;
+    for (size_t i = 0; i < memmap->entry_count; ++i) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
 
-    if (!(pml4[pml4_i] & PAGE_PRESENT)) {
-        uint64_t* pdpt = alloc_page_table();
-        if (!pdpt) {
-            serial_printf("Failed to allocate PDPT\n");
-            while(1) asm volatile ("hlt");
+        if (entry->type == LIMINE_MEMMAP_USABLE &&
+            entry->length > (1 * 1024 * 1024) &&
+            entry->base >= 0x00100000) {
+
+            uint64_t phys_start = (entry->base + ALIGN_SIZE - 1) & ~(uint64_t)(ALIGN_SIZE - 1);
+            uint64_t phys_end   = entry->base + entry->length;
+            if (phys_end <= phys_start + sizeof(free_list_block)) continue;
+
+            uint64_t usable_len = phys_end - phys_start;
+            serial_printf("Using region: base=0x%lx, length=%lu\n", phys_start, usable_len);
+
+            // Place the first free_list_block header at the *virtual* address
+            free_list_block *block = (free_list_block *)phys_to_virt(phys_start);
+            block->size = usable_len - sizeof(free_list_block);
+            block->next = free_list_head;
+            free_list_head = block;
+            blocks_added++;
+
+            serial_printf("Added block %d: vaddr=0x%lx (phys=0x%lx) size=%lu\n",
+                          blocks_added, (uint64_t)block, phys_start, block->size);
         }
-        pml4[pml4_i] = ((uint64_t)pdpt - hhdm_offset) | flags;
     }
-    uint64_t* pdpt = (uint64_t*)(hhdm_offset + (pml4[pml4_i] & ~0xFFFUL));
 
-    if (!(pdpt[pdpt_i] & PAGE_PRESENT)) {
-        uint64_t* pd = alloc_page_table();
-        if (!pd) {
-            serial_printf("Failed to allocate PD\n");
-            while(1) asm volatile ("hlt");
-        }
-        pdpt[pdpt_i] = ((uint64_t)pd - hhdm_offset) | flags;
+    if (blocks_added == 0) {
+        serial_printf("No usable blocks found\n");
+        return;
     }
-    uint64_t* pd = (uint64_t*)(hhdm_offset + (pdpt[pdpt_i] & ~0xFFFUL));
 
-    if (!(pd[pd_i] & PAGE_PRESENT)) {
-        uint64_t* pt = alloc_page_table();
-        if (!pt) {
-            serial_printf("Failed to allocate PT\n");
-            while(1) asm volatile ("hlt");
-        }
-        pd[pd_i] = ((uint64_t)pt - hhdm_offset) | flags;
-    }
-    uint64_t* pt = (uint64_t*)(hhdm_offset + (pd[pd_i] & ~0xFFFUL));
-
-    pt[pt_i] = phys_addr | flags;
+    serial_printf("Allocator initialized with %d blocks (HHDM=0x%lx)\n", blocks_added, hhdm);
 }
 
-//====================Find Usable Memory=============================
-typedef struct {
-    uint64_t base;
-    uint64_t length;
-} usable_region_t;
-
-static usable_region_t find_largest_usable_region(void) {
-    struct limine_memmap_response* memmap = memmap_request.response;
-    uint64_t best_base = 0;
-    uint64_t best_length = 0;
+void *kmalloc(size_t size) {
+    if (size == 0) return NULL;
+    if (free_list_head == NULL) return NULL;
     
-    serial_printf("Searching for usable memory regions:\n");
+    size = align_up(size, ALIGN_SIZE);
+    if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
     
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
-        struct limine_memmap_entry* entry = memmap->entries[i];
+    free_list_block **current = &free_list_head;
+    
+    while (*current != NULL) {
+        free_list_block *block = *current;
         
-        serial_printf("Entry %lu: base=0x%lx length=0x%lx type=%lu\n", 
-                     i, entry->base, entry->length, entry->type);
-        
-        // Only use actually usable memory (type 0)
-        if (entry->type == LIMINE_MEMMAP_USABLE && entry->length > best_length) {
-            best_base = entry->base;
-            best_length = entry->length;
-        }
-    }
-    
-    serial_printf("Selected usable region: base=0x%lx length=0x%lx\n", best_base, best_length);
-    return (usable_region_t){best_base, best_length};
-}
-
-//====================Paging Initialization==========================
-void paging_init(void* early_mem_base, size_t early_mem_size) {
-    uint64_t hhdm_offset = (uint64_t)hhdm_request.response->offset;
-    
-    serial_printf("HHDM offset: 0x%lx\n", hhdm_offset);
-    
-    // Get current CR3 to see what Limine set up
-    uint64_t current_cr3;
-    asm volatile ("mov %%cr3, %0" : "=r"(current_cr3));
-    serial_printf("Current CR3 (from Limine): 0x%lx\n", current_cr3);
-    
-    // Access current PML4 through HHDM
-    uint64_t* limine_pml4 = (uint64_t*)(current_cr3 + hhdm_offset);
-    serial_printf("Limine PML4 at: 0x%lx\n", (uint64_t)limine_pml4);
-    
-    // Initialize early allocator for page tables
-    early_alloc_init(early_mem_base, early_mem_size);
-    
-    uint64_t* pml4 = alloc_page_table();
-    if (!pml4) {
-        serial_printf("Page table allocation failed\n");
-        while(1) asm volatile ("hlt");
-    }
-
-    serial_printf("New PML4 allocated at (virt): 0x%lx\n", (uint64_t)pml4);
-
-    serial_printf("Copying Limine's page table entries...\n");
-    for (int i = 0; i < 512; i++) {
-        pml4[i] = limine_pml4[i];
-        if (pml4[i] & PAGE_PRESENT) {
-            serial_printf("PML4[%d] = 0x%lx (copied from Limine)\n", i, pml4[i]);
-        }
-    }
-
-    serial_printf("Adding identity mappings for low memory...\n");
-    for (uint64_t addr = 0; addr < 0x100000; addr += PAGE_SIZE) {
-        map_page(pml4, addr, addr, PAGE_PRESENT | PAGE_WRITE);
-    }
-
-    serial_printf("Ensuring buddy allocator region is mapped...\n");
-    uint64_t buddy_start = (uint64_t)early_mem_base;
-    uint64_t buddy_end = buddy_start + early_mem_size + 0x1000000; // Add 16MB buffer
-    
-    for (uint64_t virt = buddy_start; virt < buddy_end; virt += PAGE_SIZE) {
-        uint64_t phys = virt - hhdm_offset;
-        map_page(pml4, virt, phys, PAGE_PRESENT | PAGE_WRITE);
-    }
-
-    serial_printf("About to load CR3...\n");
-    
-    // Load CR3 with physical address of PML4
-    uint64_t pml4_phys = (uint64_t)pml4 - hhdm_offset;
-    serial_printf("Loading CR3 with PML4 physical address: 0x%lx\n", pml4_phys);
-    
-    load_cr3(pml4_phys);
-    
-    serial_printf("CR3 loaded successfully!\n");
-    serial_printf("Paging initialized successfully\n");
-    serial_printf("Early allocator used: 0x%lx / 0x%lx bytes\n", 
-                 early_alloc_used, early_alloc_size);
-}
-
-//==========================Buddy Allocator==========================
-#define MIN_ORDER 12  // 4 KiB
-#define MAX_ORDER 20  // 1 MiB
-#define MAX_BLOCKS (MAX_ORDER + 1)
-
-typedef struct BuddyBlock {
-    struct BuddyBlock* next;
-} BuddyBlock;
-
-static BuddyBlock* free_lists[MAX_BLOCKS];
-static uint8_t* buddy_base;
-
-static int get_order(size_t size) {
-    size_t total = size;
-    int order = MIN_ORDER;
-    while ((1UL << order) < total && order <= MAX_ORDER)
-        order++;
-    return order;
-}
-
-static void* get_buddy(void* addr, int order) {
-    uintptr_t offset = (uintptr_t)addr - (uintptr_t)buddy_base;
-    uintptr_t buddy_offset = offset ^ (1UL << order);
-    return (void*)((uintptr_t)buddy_base + buddy_offset);
-}
-
-void buddy_init(void* base, size_t length) {
-    buddy_base = (uint8_t*)base;
-
-    for (int i = 0; i < MAX_BLOCKS; i++)
-        free_lists[i] = NULL;
-
-    uintptr_t aligned_base = (uintptr_t)base;
-    size_t aligned_size = length & ~((1UL << MIN_ORDER) - 1);
-
-    int order = MAX_ORDER;
-    while ((1UL << order) > aligned_size)
-        order--;
-
-    BuddyBlock* block = (BuddyBlock*)aligned_base;
-    block->next = NULL;
-    free_lists[order] = block;
-}
-
-void* buddy_alloc(size_t size) {
-    int order = get_order(size);
-    int current = order;
-
-    while (current <= MAX_ORDER && free_lists[current] == NULL)
-        current++;
-
-    if (current > MAX_ORDER)
-        return NULL;
-
-    while (current > order) {
-        BuddyBlock* block = free_lists[current];
-        free_lists[current] = block->next;
-        current--;
-
-        uintptr_t addr = (uintptr_t)block;
-        BuddyBlock* buddy = (BuddyBlock*)(addr + (1UL << current));
-        buddy->next = NULL;
-
-        block->next = NULL;
-        free_lists[current] = buddy;
-    }
-
-    BuddyBlock* block = free_lists[order];
-    free_lists[order] = block->next;
-    return (void*)block;
-}
-
-void buddy_free(void* ptr, size_t size) {
-    int order = get_order(size);
-    uintptr_t addr = (uintptr_t)ptr;
-
-    while (order <= MAX_ORDER) {
-        void* buddy = get_buddy((void*)addr, order);
-
-        BuddyBlock** current = &free_lists[order];
-        BuddyBlock* prev = NULL;
-
-        while (*current) {
-            if (*current == (BuddyBlock*)buddy) {
-                if (prev)
-                    prev->next = (*current)->next;
-                else
-                    free_lists[order] = (*current)->next;
-
-                if ((uintptr_t)buddy < addr)
-                    addr = (uintptr_t)buddy;
-
-                order++;
-                goto try_merge;
+        if (block->size >= size) {
+            if (block->size >= size + sizeof(free_list_block) + MIN_ALLOC_SIZE) {
+                free_list_block *new_block = (free_list_block *)((uint8_t *)block + sizeof(free_list_block) + size);
+                new_block->size = block->size - size - sizeof(free_list_block);
+                new_block->next = block->next;
+                
+                block->size = size;
+                block->next = new_block;
             }
-            prev = *current;
-            current = &(*current)->next;
+            
+            *current = block->next;
+            return (uint8_t *)block + sizeof(free_list_block);
         }
-        break;
-    try_merge:;
+        
+        current = &(block->next);
     }
-
-    BuddyBlock* block = (BuddyBlock*)addr;
-    block->next = free_lists[order];
-    free_lists[order] = block;
+    
+    return NULL;
 }
 
-
-void* page_alloc(void) {
-    return buddy_alloc(PAGE_SIZE);
+void kfree(void *ptr) {
+    if (ptr == NULL) return;
+    
+    free_list_block *block = (free_list_block *)((uint8_t *)ptr - sizeof(free_list_block));
+    block->next = free_list_head;
+    free_list_head = block;
 }
 
-void page_free(void* page) {
-    buddy_free(page, PAGE_SIZE);
+void debug_free_list() {
+    serial_printf("=== Free List ===\n");
+    
+    if (free_list_head == NULL) {
+        serial_printf("Empty\n");
+        return;
+    }
+    
+    free_list_block *current = free_list_head;
+    int count = 0;
+    
+    while (current != NULL && count < 10) {
+        serial_printf("Block %d: 0x%lx size=%lu next=0x%lx\n", 
+                     count, (uint64_t)current, current->size, (uint64_t)current->next);
+        current = current->next;
+        count++;
+    }
+    
+    serial_printf("=== End ===\n");
+}
+
+void print_memory_stats() {
+    size_t total_free = 0;
+    int block_count = 0;
+    free_list_block *current = free_list_head;
+    
+    while (current != NULL) {
+        total_free += current->size;
+        block_count++;
+        current = current->next;
+    }
+    
+    serial_printf("Stats: %d blocks, %lu bytes free\n", block_count, total_free);
+}
+
+void test_allocator() {
+    serial_printf("=== Test ===\n");
+    
+    void *ptr1 = kmalloc(64);
+    serial_printf("Alloc 64: 0x%lx\n", (uint64_t)ptr1);
+    
+    void *ptr2 = kmalloc(128);
+    serial_printf("Alloc 128: 0x%lx\n", (uint64_t)ptr2);
+    
+    kfree(ptr1);
+    serial_printf("Freed first\n");
+    
+    kfree(ptr2);
+    serial_printf("Freed second\n");
+    
+    print_memory_stats();
+    serial_printf("=== End Test ===\n");
 }

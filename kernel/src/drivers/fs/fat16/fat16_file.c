@@ -7,12 +7,12 @@ void fat16_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
     bpb_t16 bpb;
     uint8_t fat[512 * 12];
 
-    if (read_bpb(drive, &bpb) != 0) {
+    if (read_bpb16(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat16_write_clusters\n");
         return;
     }
 
-    if (!validate_bpb(&bpb)) {
+    if (!validate_bpb16(&bpb)) {
         serial_printf("Invalid BPB in fat16_write_clusters\n");
         return;
     }
@@ -71,12 +71,12 @@ void fat16_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
 int fat16_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
     bpb_t16 bpb;
 
-    if (read_bpb(drive, &bpb) != 0) {
+    if (read_bpb16(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat16_write_file\n");
         return -1;
     }
 
-    if (!validate_bpb(&bpb)) {
+    if (!validate_bpb16(&bpb)) {
         serial_printf("Invalid BPB in fat16_write_file\n");
         return -1;
     }
@@ -107,12 +107,12 @@ int fat16_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
 bool fat16_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
     bpb_t16 bpb;
 
-    if (read_bpb(drive, &bpb) != 0) {
+    if (read_bpb16(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB\n");
         return false;
     }
 
-    if (!validate_bpb(&bpb)) {
+    if (!validate_bpb16(&bpb)) {
         serial_printf("Invalid BPB - filesystem may not be formatted properly\n");
         return false;
     }

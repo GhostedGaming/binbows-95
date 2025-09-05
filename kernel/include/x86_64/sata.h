@@ -319,7 +319,4 @@ typedef struct tagHBA_CMD_TBL {
 	HBA_PRDT_ENTRY	prdt_entry[1];	// Physical region descriptor table entries, 0 ~ 65535
 } HBA_CMD_TBL;
 
-// Functions
-void probe_port(HBA_MEM *abar);
-
 #endif // SATA_H

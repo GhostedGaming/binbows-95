@@ -33,22 +33,19 @@ CPPFLAGS :=
 LDFLAGS :=
 
 ifeq ($(ARCH),x86_64)
-	NASMFLAGS := -F dwarf -g -Wall -f elf64 -Wno-deprecated # silence some warnings
+	NASMFLAGS := -F dwarf -g -Wall -f elf64 -Wno-deprecated
 	CFLAGS += \
 		-Wall -Wextra -std=gnu11 -nostdinc -ffreestanding \
 		-fno-stack-protector -fno-stack-check -fno-lto -fno-PIC \
 		-ffunction-sections -fdata-sections \
 		-m64 -march=x86-64 -mabi=sysv -mno-80387 -mno-mmx \
-		-mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel
+		-mno-sse -mno-sse2 -mno-red-zone -mcmodel=kernel -pedantic-errors
 	LDFLAGS += -m elf_x86_64
 	CPPFLAGS += \
 		-I src \
 		-I include/x86_64 \
 		-I include/kernel \
 		-I include/kernel/lib \
-		-I src/x86_64/uACPI/include/internal \
-		-I src/x86_64/uACPI/include/platform \
-		-I src/x86_64/uACPI/include \
         -I bin/includes \
 		-I limine-protocol/include \
 		-isystem freestnd-c-hdrs/include \

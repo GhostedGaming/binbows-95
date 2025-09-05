@@ -20,16 +20,11 @@ void panic_impl(const char *file, int line, const char *func, const char *fmt, .
     kvsnprintf(buffer, sizeof(buffer), fmt, args);
     serial_printf("%s\n", buffer);
     va_end(args);
-    
-    panic_printf("*** KERNEL PANIC ***\n");
-    panic_printf("Location: %s:%d in %s()\n", file, line, func);
-    panic_printf("Reason: %s\n", buffer);
-    
+        
     print_registers();
     print_stack_trace();
     
     serial_printf("\nSystem halted.\n");
-    panic_printf("\nSystem halted.\n");
     
     while (1) {
         asm volatile("hlt");
@@ -69,15 +64,6 @@ void print_registers(void) {
     serial_printf("R12: 0x%016lx R13: 0x%016lx R14: 0x%016lx R15: 0x%016lx\n", r12, r13, r14, r15);
     serial_printf("RFLAGS: 0x%016lx\n", rflags);
     serial_printf("CR0: 0x%016lx CR2: 0x%016lx CR3: 0x%016lx\n", cr0, cr2, cr3);
-    
-    panic_printf("Register dump:\n");
-    panic_printf("RAX: 0x%016lx RBX: 0x%016lx\n", rax, rbx);
-    panic_printf("RCX: 0x%016lx RDX: 0x%016lx\n", rcx, rdx);
-    panic_printf("RSI: 0x%016lx RDI: 0x%016lx\n", rsi, rdi);
-    panic_printf("RBP: 0x%016lx RSP: 0x%016lx\n", rbp, rsp);
-    panic_printf("RFLAGS: 0x%016lx\n", rflags);
-    panic_printf("CR0: 0x%016lx CR2: 0x%016lx\n", cr0, cr2);
-    panic_printf("CR3: 0x%016lx\n", cr3);
 }
 
 void print_stack_trace(void) {
@@ -110,34 +96,5 @@ void print_stack_trace(void) {
     
     if (frame_count == 0) {
         serial_printf(" No valid stack frames found\n");
-    }
-    
-    panic_printf("Stack trace (top 5 frames):\n");
-    
-    asm volatile("mov %%rbp, %0" : "=r"(rbp));
-    frame_count = 0;
-    const int max_screen_frames = 5;
-    
-    while (rbp && frame_count < max_screen_frames) {
-        if ((uintptr_t)rbp < 0x1000 || (uintptr_t)rbp > 0x7fffffffffff) {
-            panic_printf(" [%d] Invalid frame: %p\n", frame_count, rbp);
-            break;
-        }
-        
-        uint64_t return_addr = *(rbp + 1);
-        panic_printf(" [%d] %p -> %p\n", frame_count, rbp, (void*)return_addr);
-        
-        uint64_t *prev_rbp = (uint64_t*)*rbp;
-        if (prev_rbp <= rbp) {
-            panic_printf(" [%d] Chain broken\n", frame_count + 1);
-            break;
-        }
-        
-        rbp = prev_rbp;
-        frame_count++;
-    }
-    
-    if (frame_count == 0) {
-        panic_printf(" No valid frames found\n");
     }
 }

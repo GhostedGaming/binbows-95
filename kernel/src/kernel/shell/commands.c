@@ -2,6 +2,7 @@
 #include <fat12.h>
 #include <stddef.h>
 #include <util.h>
+#include <framebuffer.h>
 
 extern struct ide_device ide_devices[4];
 
@@ -89,7 +90,7 @@ void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]) {
 void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
     shell_print("Formatting drive: ");
     
-    int drive_num = NULL;
+    int drive_num = 0;
     
     if (argc > 1) {
         drive_num = char_to_int(args[1][0]);

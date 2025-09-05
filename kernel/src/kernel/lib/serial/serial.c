@@ -1,6 +1,5 @@
 #include <io.h>
 #include <serial.h>
-#include <stdarg.h>
 
 #define PORT 0x3F8 // COM1
 
@@ -149,4 +148,93 @@ void serial_printf(const char *fmt, ...) {
     }
 
     va_end(args);
+}
+
+int kvsnprintf(char *buffer, size_t size, const char *fmt, va_list args) {
+    char *ptr = buffer;
+    char *end = buffer + size - 1;
+    char temp[32];
+    
+    while (*fmt && ptr < end) {
+        if (*fmt == '%') {
+            fmt++;
+            switch (*fmt) {
+                case 'd': {
+                    int val = va_arg(args, int);
+                    char *t = temp;
+                    int neg = 0;
+                    
+                    if (val < 0) {
+                        neg = 1;
+                        val = -val;
+                    }
+                    
+                    // Convert to string
+                    if (val == 0) {
+                        *t++ = '0';
+                    } else {
+                        while (val > 0) {
+                            *t++ = '0' + (val % 10);
+                            val /= 10;
+                        }
+                    }
+                    
+                    if (neg && ptr < end) *ptr++ = '-';
+                    
+                    // Reverse and copy
+                    while (t > temp && ptr < end) {
+                        *ptr++ = *--t;
+                    }
+                    break;
+                }
+                case 'x': {
+                    unsigned int val = va_arg(args, unsigned int);
+                    char *t = temp;
+                    const char *hex = "0123456789abcdef";
+                    
+                    if (val == 0) {
+                        *t++ = '0';
+                    } else {
+                        while (val > 0) {
+                            *t++ = hex[val % 16];
+                            val /= 16;
+                        }
+                    }
+                    
+                    while (t > temp && ptr < end) {
+                        *ptr++ = *--t;
+                    }
+                    break;
+                }
+                case 's': {
+                    char *str = va_arg(args, char *);
+                    if (!str) str = "(null)";
+                    while (*str && ptr < end) {
+                        *ptr++ = *str++;
+                    }
+                    break;
+                }
+                case 'c': {
+                    char ch = (char)va_arg(args, int);
+                    if (ptr < end) *ptr++ = ch;
+                    break;
+                }
+                case '%': {
+                    if (ptr < end) *ptr++ = '%';
+                    break;
+                }
+                default: {
+                    if (ptr < end) *ptr++ = '%';
+                    if (ptr < end) *ptr++ = *fmt;
+                    break;
+                }
+            }
+            fmt++;
+        } else {
+            *ptr++ = *fmt++;
+        }
+    }
+    
+    *ptr = '\0';
+    return ptr - buffer;
 }

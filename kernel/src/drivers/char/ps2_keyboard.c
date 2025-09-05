@@ -4,6 +4,7 @@
 #include <idt.h>
 #include <shell.h>
 #include <framebuffer.h>
+#include <util.h>
 
 // Inline functions for better performance
 static inline void keyboard_wait_input(void) {
@@ -34,7 +35,7 @@ static char get_character(uint8_t key) {
     
     // Handle shift characters using optimized lookup
     if (modifiers.shift) {
-        const char *pos = strchr(normal_chars, c);
+        const char* pos = strchr(normal_chars, c);
         if (pos) {
             return shift_chars[pos - normal_chars];
         }

@@ -6,7 +6,7 @@ void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *
     bpb_t32 bpb;
     uint8_t fat[512 * 128];
 
-    if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
+    if (read_bpb32(drive, &bpb) != 0 || !validate_bpb32(&bpb)) {
         serial_printf("Invalid BPB in fat32_write_clusters\n");
         return;
     }
@@ -62,7 +62,7 @@ void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *
 int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
     bpb_t32 bpb;
 
-    if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
+    if (read_bpb32(drive, &bpb) != 0 || !validate_bpb32(&bpb)) {
         serial_printf("Invalid BPB in fat32_write_file\n");
         return -1;
     }
@@ -93,14 +93,14 @@ int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
 bool fat32_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
     bpb_t32 bpb;
 
-    if (read_bpb(drive, &bpb) != 0 || !validate_bpb(&bpb)) {
+    if (read_bpb32(drive, &bpb) != 0 || !validate_bpb32(&bpb)) {
         serial_printf("Invalid BPB in fat32_read_file\n");
         return false;
     }
 
     uint32_t data_start_lba = bpb.reserved_sector_count + (bpb.num_fats * bpb.fat_size_32);
     char fat_filename[12];
-    fat16_format_filename_for_compare(filename, fat_filename);
+    fat32_format_filename_for_compare(filename, fat_filename);
 
     uint8_t sector[512];
     for (uint32_t i = 0; i < bpb.root_cluster; i++) {

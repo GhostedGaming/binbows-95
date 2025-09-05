@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <serial.h>
 #include <gdt.h>
-#include <mem.h>
+#include <util.h>
 
 #define GDT_ENTRIES 7
 

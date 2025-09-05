@@ -6,6 +6,9 @@
 #include <ps2_keyboard.h>
 #include <timer.h>
 #include <io.h>
+#include <scheduler.h>
+
+// This file hold all the interrupts and exceptions needed
 
 #define IA32_STAR      0xC0000081
 #define IA32_LSTAR     0xC0000082
@@ -32,8 +35,8 @@ static inline void write_msr(uint32_t msr, uint64_t value) {
     __asm__ volatile ("wrmsr" : : "c"(msr), "a"(low), "d"(high));
 }
 
-static void idt_add_entry(uint8_t vector, void* isr, uint8_t flags) {
-    uint64_t addr = (uint64_t)isr;
+static void idt_add_entry(uint8_t vector, void (*isr)(void), uint8_t flags) {
+    uint64_t addr = (uint64_t)(uintptr_t)isr;
     idt[vector].isr_low = addr & 0xFFFF;
     idt[vector].kernel_cs = 0x08;
     idt[vector].ist = 0;
@@ -59,8 +62,7 @@ void install_exceptions(void) {
     write_serial("IDT: CPU exception handlers installed\n");
 }
 
-// Install IRQ handler
-void install_irq_common(uint8_t irq_vector, void* handler) {
+void install_irq_common(uint8_t irq_vector, void (*handler)(void)) {
     idt_add_entry(irq_vector, handler, 0x8E);
 }
 
@@ -131,6 +133,8 @@ void irq_handler(uint64_t irq_number) {
     switch(irq_number) {
         case 32: // IRQ0 - Timer
             on_irq0();
+            // change_process();
+            serial_printf(".");
             break;
         case 33: // IRQ1 - Keyboard
             keyboard_handler(NULL);

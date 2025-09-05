@@ -2,6 +2,7 @@
 #include <mem.h>
 #include <framebuffer.h>
 #include <shell.h>
+#include <util.h>
 
 void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc) {
     *argc = 0;
