@@ -43,11 +43,12 @@ ifeq ($(ARCH),x86_64)
 	LDFLAGS += -m elf_x86_64
 	CPPFLAGS += \
 		-I src \
-		-I include/arch/x86_64 \
+		-I include/x86_64 \
 		-I include/kernel \
-		-I src/arch/x86_64/uACPI/include/internal \
-		-I src/arch/x86_64/uACPI/include/platform \
-		-I src/arch/x86_64/uACPI/include \
+		-I include/kernel/lib \
+		-I src/x86_64/uACPI/include/internal \
+		-I src/x86_64/uACPI/include/platform \
+		-I src/x86_64/uACPI/include \
         -I bin/includes \
 		-I limine-protocol/include \
 		-isystem freestnd-c-hdrs/include \

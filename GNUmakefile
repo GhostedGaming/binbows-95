@@ -37,18 +37,29 @@ tools:
 .PHONY: ide-image
 ide-image:
 	@if [ ! -f ide.img ]; then \
-		echo "Creating ide.img (1GB raw disk image)..."; \
+		echo "Creating ide.img (32MB raw disk image)..."; \
 		qemu-img create -f raw ide.img 32M; \
 	fi
 
+.PHONY: ahci-image
+ahci-image:
+	@if [ ! -f ahci.img ]; then \
+		echo "Creating ahci.img (32MB raw disk image)..."; \
+		qemu-img create -f raw ahci.img 32M; \
+	fi
+
 .PHONY: run-x86_64
-run-x86_64: clean $(IMAGE_NAME).iso ide-image
-	@QEMU_AUDIO_DRV=pa qemu-system-x86_64 \
+run-x86_64: clean $(IMAGE_NAME).iso ide-image ahci-image
+	clear
+	qemu-system-x86_64 \
 		-M pc \
 		$(QEMUFLAGS) \
 		-cdrom $(IMAGE_NAME).iso \
 		-drive file=ide.img,format=raw,if=none,id=drive0 \
 		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
+		-drive file=ahci.img,format=raw,if=none,id=drive1 \
+		-device ahci,id=ahci \
+		-device ide-hd,drive=drive1,bus=ahci.0 \
 		-device piix3-usb-uhci,id=uhci \
 		-no-reboot -no-shutdown -s
 
@@ -136,13 +147,16 @@ codespace-setup:
 	sudo apt update && sudo apt install -y build-essential nasm qemu-system-x86 qemu-utils mtools xorriso sgdisk curl
 
 .PHONY: run-codespace
-run-codespace: clean $(IMAGE_NAME).iso ide-image
+run-codespace: clean $(IMAGE_NAME).iso ide-image ahci-image
 	@echo "Running QEMU in headless mode for Codespaces..."
 	qemu-system-x86_64 \
 		-m 2G \
 		-cdrom $(IMAGE_NAME).iso \
 		-drive file=ide.img,format=raw,if=none,id=drive0 \
 		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \
+		-drive file=ahci.img,format=raw,if=none,id=drive1 \
+		-device ahci,id=ahci \
+		-device ide-hd,drive=drive1,bus=ahci.0 \
 		-no-reboot \
 		-no-shutdown \
 		-nographic \
@@ -265,9 +279,9 @@ endif
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd ide.img
+	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd ide.img ahci.img
 
 .PHONY: distclean
 distclean:
 	$(MAKE) -C kernel distclean
-	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img
+	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img ahci.img

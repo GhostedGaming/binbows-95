@@ -1,6 +1,4 @@
 #include <kernel.h>
-#include <test.h>
-#include <fbe.h>
 
 // LIMINE bootloader protocol requests
 extern volatile struct limine_memmap_request memmap_request;
@@ -31,7 +29,6 @@ void kernel_main(void) {
 
     init_timer();
     asm volatile ("sti");
-    init_rtc();
 
     // Check memory map
     if (!memmap_request.response) {
@@ -96,17 +93,12 @@ void kernel_main(void) {
     check_all_buses();
     serial_printf("PCI finished!\n");
 
-    draw_text(-1, -1, "Initiating UHCI", rgb_to_color(255, 255, 255), true);
-    serial_printf("Running uhci_init\n");
-    uhci_init();
-    serial_printf("uhci_init finished!\n");
-
     draw_text(-1, -1, "System Initialized!", rgb_to_color(255, 255, 255), true);
 
-    timer_wait_ms(500);
+    timer_wait_ms(150);
 
     shell_init();
 
     // Halt CPU
-    for (;;) asm volatile ("hlt");
+    while (1) asm volatile ("hlt");
 }

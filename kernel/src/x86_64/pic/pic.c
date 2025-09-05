@@ -1,4 +1,4 @@
-#include "pic.h"
+#include <pic.h>
 #include <serial.h>
 
 static uint16_t __pic_get_irq_reg(int ocw3) {

@@ -1,7 +1,6 @@
 #include <io.h>
 #include <serial.h>
 #include <stdarg.h>
-#include <stdint.h>
 
 #define PORT 0x3F8 // COM1
 

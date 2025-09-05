@@ -18,7 +18,6 @@
 #include <rtc.h>
 #include <serial.h>
 #include <timer.h>
-#include <uhci.h>
 #include <enable_sse.h>
 #include <shell.h>
 #include <stdint.h>

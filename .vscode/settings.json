@@ -17,6 +17,7 @@
         "shell.h": "c",
         "stddef.h": "c",
         "idt.h": "c",
-        "gdt.h": "c"
+        "gdt.h": "c",
+        "mem.h": "c"
     }
 }
