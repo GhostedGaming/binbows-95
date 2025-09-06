@@ -5,9 +5,6 @@ extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
 extern volatile struct limine_bootloader_info_request bootloader_request;
 
-// IDE device array
-extern struct ide_device ide_devices[4]; // Change the number for more ide drives
-
 void kernel_main(void) {
      // Check memory map
     if (!memmap_request.response) {
@@ -57,7 +54,7 @@ void kernel_main(void) {
 
     timer_wait_ms(150);
 
-    // Initialize sad kernel shell :(
+    // Initialize kernel shell this is used for testing purposes
     shell_init();
 
     // Halt CPU

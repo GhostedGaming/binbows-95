@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <kernel.h>
 #include <limine.h>
+#include <panic.h>
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER
@@ -39,12 +40,11 @@ static volatile LIMINE_REQUESTS_END_MARKER
 
 
 void kmain(void) {
-    // Check base revision support
     if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-        // Handle error - halt or panic
-        __asm__("cli");
+        asm ("cli");
         for (;;) {
-            __asm__("hlt");
+            panic("Limine base revision not supported!");
+            asm ("hlt");
         }
     }
     

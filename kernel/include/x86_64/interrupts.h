@@ -25,5 +25,6 @@ void init_timer_irq(void);
 void init_keyboard_irq(void);
 void idt_set_gate(uint8_t vector, uint64_t isr, uint16_t selector, uint8_t flags);
 int install_irq_handler(uint8_t irq, void (*handler)(void*), void* ctx);
+void install_irq_common(uint8_t irq_vector, void (*handler)(void));
 
 #endif // IDT_H

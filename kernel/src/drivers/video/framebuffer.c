@@ -15,7 +15,6 @@ int fb_height = 0;
 int fb_pitch = 0;
 uint32_t *fb_ptr = NULL;
 
-// Cursor position globals
 uint16_t cursor_position_x = 0;
 uint16_t cursor_position_y = 0;
 

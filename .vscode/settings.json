@@ -19,6 +19,10 @@
         "idt.h": "c",
         "gdt.h": "c",
         "mem.h": "c",
-        "sata.h": "c"
+        "sata.h": "c",
+        "pic.h": "c",
+        "io.h": "c",
+        "ide.h": "c",
+        "interrupts.h": "c"
     }
 }

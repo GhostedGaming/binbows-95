@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-#include <idt.h>
+#include <interrupts.h>
 #include <pic.h>
 #include <serial.h>
 #include <ps2_keyboard.h>

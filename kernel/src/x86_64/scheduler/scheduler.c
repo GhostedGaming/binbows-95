@@ -3,6 +3,7 @@
 #include <serial.h>
 #include <assert.h>
 #include <mem.h>
+#include <util.h>
 
 // This file doesnt do anything yet eventually i will figure out how schedulers work
 
@@ -55,10 +56,15 @@ void context_switch(uint64_t one, uint64_t two) {
         ASSERT(initialized == true);
         return;
     }
-    if (one == two) {
-        return;
-    }
+    if (one == two) return;
     save_register_and_switch(one, two);
+}
+
+int load_process(void *binary_data, size_t size) {
+    scheduler.processes->code = kmalloc(size);
+    if (!scheduler.processes->code) return -1;
+
+    memcpy(scheduler.processes->code, binary_data, size);
 }
 
 int create_process(void (*entry_point)(void), uint32_t priority) {
@@ -86,6 +92,7 @@ int create_process(void (*entry_point)(void), uint32_t priority) {
     scheduler.processes[new_index].cpu_time_used = 0;
     setup_initial_stack(&scheduler.processes[new_index]);
     scheduler.process_count++;
+
     return scheduler.processes[new_index].pid;
 }
 

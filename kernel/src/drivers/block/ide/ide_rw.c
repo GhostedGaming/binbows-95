@@ -11,13 +11,12 @@ int ide_read_sectors(uint8_t drive, uint8_t numsects, uint32_t lba, void *buf) {
     uint8_t channel = ide_devices[drive].Channel;
     uint8_t slavebit = ide_devices[drive].Drive;
     uint16_t bus = channels[channel].base;
-    uint8_t lba_mode = 0;
-    uint8_t cmd;
+    uint8_t lba_mode;
 
     uint8_t lba_io[6];
     uint8_t head;
 
-    uint16_t cyl, i;
+    uint16_t i;
     uint8_t err;
 
     if (lba >= 0x10000000) {
@@ -68,8 +67,7 @@ int ide_write_sectors(uint8_t drive, uint8_t numsects, uint32_t lba, const void 
     uint8_t channel = ide_devices[drive].Channel;
     uint8_t slavebit = ide_devices[drive].Drive;
     uint16_t bus = channels[channel].base;
-    uint8_t lba_mode = 0;
-    uint8_t cmd;
+    uint8_t lba_mode;
 
     uint8_t lba_io[6];
     uint8_t head;

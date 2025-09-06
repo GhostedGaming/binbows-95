@@ -9,7 +9,7 @@
 #include <font.h>
 #include <gdt.h>
 #include <ide.h>
-#include <idt.h>
+#include <interrupts.h>
 #include <limine.h>
 #include <mem.h>
 #include <pci.h>

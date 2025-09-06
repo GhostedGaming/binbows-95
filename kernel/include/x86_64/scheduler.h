@@ -5,6 +5,16 @@
 
 #define MAX_PROCESS_COUNT 255
 #define STACK_SIZE 4096
+#define PROT_PRESENT    0x001
+#define PROT_WRITE      0x002
+#define PROT_USER       0x004
+#define PROT_EXECUTE    0x000
+
+#define PROT_READ       (PROT_PRESENT)
+#define PROT_READ_WRITE (PROT_PRESENT | PROT_WRITE)
+#define PROT_READ_EXEC  (PROT_PRESENT)
+#define PROT_USER_READ  (PROT_PRESENT | PROT_USER)
+#define PROT_USER_RW    (PROT_PRESENT | PROT_WRITE | PROT_USER)
 
 typedef enum {
     PROCESS_READY,
@@ -21,6 +31,7 @@ typedef struct {
     uint32_t* stack_base;
     uint32_t time_slice;
     uint32_t cpu_time_used;
+    uint32_t code;
     void (*entry_point)(void);
 } process_t;
 
