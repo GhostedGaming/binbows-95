@@ -6,80 +6,60 @@
 #include <framebuffer.h>
 #include <util.h>
 
-// Inline functions for better performance
-static inline void keyboard_wait_input(void) {
+static modifier_state_t modifiers = {0};
+
+static const uint8_t scancode_to_key[128] = {
+    0, KEY_ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 
+    KEY_BACKSPACE, KEY_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 
+    '[', ']', KEY_ENTER, KEY_CTRL, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 
+    'l', ';', '\'', '`', KEY_LSHIFT, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', 
+    ',', '.', '/', KEY_RSHIFT, '*', KEY_ALT, KEY_SPACE, KEY_CAPS, KEY_F1, 
+    KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10,
+    0, 0, KEY_HOME, KEY_UP, KEY_PGUP, 0, KEY_LEFT, 0, KEY_RIGHT, 0, KEY_END,
+    KEY_DOWN, KEY_PGDOWN, KEY_INSERT, KEY_DELETE
+};
+
+static const char shift_map[] = "!@#$%^&*()_+{}|:\"~<>?";
+static const char normal_map[] = "1234567890-=[]\\;'`,./";
+
+void init_keyboard(void) {
+    modifiers = (modifier_state_t){0};
+    
+    while (inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL) {
+        inb(KB_DATA_PORT);
+    }
+    
     while (inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL);
+    outb(KB_COMMAND_PORT, KB_ENABLE_KEYBOARD);
+    while (inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL);
+    
+    enable_keyboard_irq();
 }
 
-static inline bool is_printable(uint8_t key) {
-    return (key >= 32 && key <= 126);
-}
-
-static inline bool is_letter(char c) {
-    return (c >= 'a' && c <= 'z');
-}
-
-static char get_character(uint8_t key) {
+char get_character(uint8_t key) {
     if (key == 0 || key >= 128) return 0;
     
     char c = (char)key;
     
-    if (is_letter(c)) {
+    if (c >= 'a' && c <= 'z') {
         if (modifiers.caps_lock ^ modifiers.shift) {
-            c ^= 0x20;
+            c = c - 'a' + 'A';
         }
         return c;
     }
     
     if (modifiers.shift) {
-        const char* pos = strchr(normal_chars, c);
-        if (pos) {
-            return shift_chars[pos - normal_chars];
+        for (int i = 0; normal_map[i]; i++) {
+            if (normal_map[i] == c) {
+                return shift_map[i];
+            }
         }
     }
     
     return c;
 }
 
-static uint8_t get_extended_key(uint8_t scancode) {
-    for (long unsigned int i = 0; i < sizeof(extended_map) / sizeof(extended_map[0]); i++) {
-        if (extended_map[i].scancode == scancode) {
-            return extended_map[i].key;
-        }
-    }
-    return 0;
-}
-
-typedef void (*key_handler_func_t)(uint8_t key);
-
-static void handle_ctrl_combination(char c) {
-    switch (c | 0x20) {
-        case 'l': input(12); break;
-        case 'k': input(11); break;
-        case 'u': input(21); break;
-        case 'w': input(23); break;
-        case 'd': input(4); break; 
-        case 'a': shell_move_cursor_home(); break;
-        case 'e': shell_move_cursor_end(); break;
-        case 'c': shell_cancel_input(); break;
-    }
-}
-
-static void handle_navigation_key(uint8_t key) {
-    switch (key) {
-        case KEY_HOME: shell_move_cursor_home(); break;
-        case KEY_END: shell_move_cursor_end(); break;
-        case KEY_UP: shell_history_up(); break;
-        case KEY_DOWN: shell_history_down(); break;
-        case KEY_LEFT: shell_move_cursor_left(); break;
-        case KEY_RIGHT: shell_move_cursor_right(); break;
-        case KEY_DELETE: shell_delete(); break;
-    }
-}
-
-static void process_key_input(uint8_t key, bool pressed) {
-    if (!pressed) return;
-    
+void handle_key_press(uint8_t key) {
     switch (key) {
         case KEY_LSHIFT:
         case KEY_RSHIFT:
@@ -105,49 +85,80 @@ static void process_key_input(uint8_t key, bool pressed) {
     if (key == KEY_ENTER) {
         char *command = input('\n');
         if (command) parse_command();
-        serial_printf("\r\n");
         return;
     }
     
-    if (key >= KEY_HOME && key <= KEY_DELETE) {
-        handle_navigation_key(key);
+    if (key == KEY_HOME) {
+        shell_move_cursor_home();
         return;
     }
     
-    if (is_printable(key)) {
+    if (key == KEY_END) {
+        shell_move_cursor_end();
+        return;
+    }
+    
+    if (key == KEY_UP) {
+        shell_history_up();
+        return;
+    }
+    
+    if (key == KEY_DOWN) {
+        shell_history_down();
+        return;
+    }
+    
+    if (key == KEY_LEFT) {
+        shell_move_cursor_left();
+        return;
+    }
+    
+    if (key == KEY_RIGHT) {
+        shell_move_cursor_right();
+        return;
+    }
+    
+    if (key == KEY_DELETE) {
+        shell_delete();
+        return;
+    }
+    
+    if (key >= 32 && key <= 126) {
         char c = get_character(key);
         if (c == 0) return;
         
         if (modifiers.ctrl) {
-            handle_ctrl_combination(c);
-        } else if (modifiers.alt) {
-            serial_printf("[ALT+%c]\r\n", c);
+            switch (c | 0x20) {
+                case 'l': input(12); break;
+                case 'u': input(21); break;
+                case 'd': input(4); break;
+                case 'a': shell_move_cursor_home(); break;
+                case 'e': shell_move_cursor_end(); break;
+                case 'c': shell_cancel_input(); break;
+            }
         } else {
             char *command = input(c);
             if (command) parse_command();
-            serial_printf("%c", c);
         }
     }
 }
 
-void init_keyboard(void) {
-    modifiers = (modifier_state_t){0};
-    
-    while (inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL) {
-        inb(KB_DATA_PORT);
+void handle_key_release(uint8_t key) {
+    switch (key) {
+        case KEY_LSHIFT:
+        case KEY_RSHIFT:
+            modifiers.shift = false;
+            break;
+        case KEY_CTRL:
+            modifiers.ctrl = false;
+            break;
+        case KEY_ALT:
+            modifiers.alt = false;
+            break;
     }
-    
-    keyboard_wait_input();
-    outb(KB_COMMAND_PORT, KB_ENABLE_KEYBOARD);
-    keyboard_wait_input();
-    
-    serial_printf("Keyboard initialized\r\n");
-    enable_keyboard_irq();
 }
 
 void keyboard_handler(struct interrupt_registers *regs) {
-    (void)regs;
-    
     if (!(inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL)) {
         return;
     }
@@ -162,59 +173,25 @@ void keyboard_handler(struct interrupt_registers *regs) {
     uint8_t scancode = scancode_raw & 0x7F;
     bool key_pressed = !(scancode_raw & 0x80);
     
-    if (scancode >= sizeof(scancode_map)) {
+    if (scancode >= sizeof(scancode_to_key)) {
         modifiers.extended = false;
         return;
     }
     
-    uint8_t key;
-    if (modifiers.extended) {
-        key = get_extended_key(scancode);
-        modifiers.extended = false;
+    uint8_t key = scancode_to_key[scancode];
+    
+    if (key_pressed) {
+        received_key = key;
+        handle_key_press(key);
     } else {
-        key = scancode_map[scancode];
+        handle_key_release(key);
     }
     
-    if (key == 0) return;
-    
-    if (!key_pressed) {
-        switch (key) {
-            case KEY_LSHIFT:
-            case KEY_RSHIFT:
-                modifiers.shift = false;
-                break;
-            case KEY_CTRL:
-                modifiers.ctrl = false;
-                break;
-            case KEY_ALT:
-                modifiers.alt = false;
-                break;
-        }
-        return;
-    }
-    
-    process_key_input(key, key_pressed);
-}
-
-bool is_shift_pressed(void) {
-    return modifiers.shift;
-}
-
-bool is_ctrl_pressed(void) {
-    return modifiers.ctrl;
-}
-
-bool is_alt_pressed(void) {
-    return modifiers.alt;
-}
-
-bool is_caps_lock_on(void) {
-    return modifiers.caps_lock;
+    modifiers.extended = false;
 }
 
 void enable_keyboard_irq(void) {
     uint8_t mask = inb(PIC1_DATA_PORT);
     mask &= ~(1 << 1);
     outb(PIC1_DATA_PORT, mask);
-    serial_printf("Keyboard: IRQ1 enabled in PIC\r\n");
 }

@@ -84,7 +84,7 @@ void format_fat32(uint8_t drive);
 uint32_t fat32_alloc_clusters(uint8_t drive, uint32_t count);
 void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *data, uint32_t size);
 void fat32_write_dir_entry(uint8_t drive, bpb_t32* bpb, uint32_t parent_cluster, const char* filename, uint32_t first_cluster, uint32_t size);
-int fat32_write_file(uint8_t drive, const char *filename, const uint8_t *data, uint32_t size);
+int fat32_write_file(uint8_t drive, const char *filename, const uint8_t *data);
 bool fat32_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out);
 
 // Internal helper functions

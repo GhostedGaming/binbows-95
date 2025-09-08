@@ -2,7 +2,7 @@
 
 uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count) {
     bpb_t12 bpb;
-    uint8_t fat[512 * 12];  // Support up to 12 sectors of FAT
+    uint8_t fat[512 * 12];
     
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat12_alloc_clusters\n");

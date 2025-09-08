@@ -14,10 +14,12 @@ const shell_command_t commands[] = {
     {"history", cmd_history, "Show command history", "history"},
     {"uptime", cmd_uptime, "Show system uptime", "uptime"},
     {"exit", cmd_exit, "Exit shell", "exit"},
-    {"format", cmd_format, "Format a drive", "format"},
-    {"lsdri", cmd_lsdri, "list drives", "lsdri"},
-    {"lsf", cmd_lsf, "list files", "lsf"},
-    {"mkfile", cmd_mkfile, "make a file", "mkfile"},
+    {"format", cmd_format, "Format a drive", "format <drive_number> [label]"},
+    {"lsdri", cmd_lsdri, "List drives", "lsdri"},
+    {"lsf", cmd_lsf, "List files", "lsf <drive_number>"},
+    {"mkfile", cmd_mkfile, "Create file", "mkfile <drive_number> <filename>"},
+    {"cat", cmd_cat, "Display file contents", "cat <drive_number> <filename>"},
+    {"pause", cmd_pause, "Pause until input", "pause"},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -30,16 +32,12 @@ void cmd_help(int argc, char args[][MAX_ARG_LENGTH]) {
         shell_print(cmd->description);
         shell_print("\n");
     }
-    shell_print("\nNavigation:\n"
-               "  Ctrl+C        - Cancel current input\n"
-               "  Ctrl+L        - Clear screen\n"
-               "  Ctrl+A        - Move to beginning of line\n"
-               "  Ctrl+E        - Move to end of line\n"
-               "  Ctrl+K        - Kill to end of line\n"
-               "  Ctrl+U        - Kill entire line\n"
-               "  Ctrl+W        - Kill word backward\n"
-               "  Left/Right    - Move cursor\n"
-               "  Home/End      - Move to line start/end\n");
+    shell_print("\nKeyboard shortcuts:\n"
+               "  Ctrl+C - Cancel input\n"
+               "  Ctrl+L - Clear screen\n"
+               "  Ctrl+A - Home\n"
+               "  Ctrl+E - End\n"
+               "  Ctrl+U - Clear line\n");
 }
 
 void cmd_hello(int argc, char args[][MAX_ARG_LENGTH]) {
@@ -84,59 +82,26 @@ void cmd_history(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]) {
-    shell_print("System uptime: Unknown (uptime not implemented)\n");
+    shell_print("System uptime: Not implemented\n");
 }
 
 void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
-    shell_print("Formatting drive: ");
+    if (argc < 2) {
+        shell_error("format: missing drive number");
+        return;
+    }
     
-    int drive_num = 0;
+    int drive_num = args[1][0] - '0';
+    if (drive_num < 0 || drive_num > 9) {
+        shell_error("format: invalid drive number");
+        return;
+    }
     
-    if (argc > 1) {
-        drive_num = char_to_int(args[1][0]);
-        if (drive_num == -1) {
-            shell_print("Invalid drive number. Use 0-9.\n");
-            return;
-        }
-    }
-
-    if (argc > 2) {
-        format_fat12((uint8_t)drive_num, args[2]);
-    } else {
-        format_fat12((uint8_t)drive_num, "drive");
-    }
-
-    serial_printf("Boot_Check");
-
-    char drive_name[11] = "";
-    uint8_t boot_check[512];
-    if (ide_read_sectors(0, 1, 0, boot_check) == 0) {
-        serial_printf("Boot sector verification:\n");
-        serial_printf("Jump instruction: 0x%02X 0x%02X 0x%02X\n", boot_check[0], boot_check[1], boot_check[2]);
-        serial_printf("OEM name: ");
-
-        int name_index = 0;
-        for (int i = 3; i < 11; i++) {
-            write_serial_char(boot_check[i]);
-            drive_name[name_index] = boot_check[i];
-            name_index++;
-        }
-
-        shell_print(drive_name);
-
-        write_serial_char('\n');
-        serial_printf("Boot signature: 0x%02X%02X\n", boot_check[511], boot_check[510]);
-
-        bpb_t12 *test_bpb = (bpb_t12 *)(boot_check + 11);
-        serial_printf("BPB verification:\n");
-        serial_printf("  bytes_per_sector: %u\n", test_bpb->bytes_per_sector);
-        serial_printf("  sectors_per_cluster: %u\n", test_bpb->sectors_per_cluster);
-        serial_printf("  num_fats: %u\n", test_bpb->num_fats);
-        serial_printf("  fat_size_16: %u\n", test_bpb->fat_size_16);
-        serial_printf("  root_entry_count: %u\n", test_bpb->root_entry_count);
-    }
-
-    shell_print_prompt();
+    const char *label = (argc > 2) ? args[2] : "DRIVE";
+    
+    shell_printf("Formatting drive %d with label '%s'...\n", drive_num, label);
+    format_fat12((uint8_t)drive_num, label);
+    shell_success("Format complete");
 }
 
 void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
@@ -144,7 +109,7 @@ void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
         ide_devices[i].Reserved = 0;
         ide_identify(i / 2, i % 2);
         if (ide_devices[i].Reserved) {
-            shell_printf("Found IDE drive %d: %s, Size: %u sectors\n",
+            shell_printf("Drive %d: %s (%d sectors)\n",
                         i, ide_devices[i].Model, ide_devices[i].Size);
         }
     }
@@ -152,23 +117,150 @@ void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
 
 void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]) {
     if (argc < 2) {
-        shell_print("Please pass the drive number\n");
+        shell_error("lsf: missing drive number");
         return;
     }
-
+    
     uint8_t drive = (uint8_t)(args[1][0] - '0');
-    shell_printf(fat12_read_files(drive) + '\n');
+    if (drive > 9) {
+        shell_error("lsf: invalid drive number");
+        return;
+    }
+    
+    char *file_list = fat12_read_files(drive);
+    shell_print(file_list);
+    shell_print("\n");
 }
 
 void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]) {
     if (argc < 3) {
-        shell_print("Usage: mkfile <drive_number> <filename>\n");
+        shell_error("mkfile: missing arguments");
+        shell_print("Usage: mkfile <drive_number> <filename> Optional: <content>\n");
         return;
     }
-
+    
     uint8_t drive = (uint8_t)(args[1][0] - '0');
-    fat12_write_file(drive, args[2], (const uint8_t*)"");
-    shell_printf("File made %s\n", args[2]);
+    if (drive > 3) {
+        shell_error("mkfile: invalid drive number");
+        return;
+    }
+    
+    static char content_buffer[512];
+    content_buffer[0] = '\0';
+    uint32_t content_length = 0;
+    
+    if (argc >= 4) {
+        for (int i = 3; i < argc; i++) {
+            uint32_t arg_len = strlen(args[i]);
+            if (content_length + arg_len + 1 >= sizeof(content_buffer)) {
+                shell_error("mkfile: content too long (max 511 characters)");
+                return;
+            }
+            
+            strcat(content_buffer, args[i]);
+            content_length += arg_len;
+            
+            if (i < argc - 1) {
+                strcat(content_buffer, " ");
+                content_length += 1;
+            }
+        }
+    }
+    
+    if (content_length == 0) {
+        content_length = 1;
+        content_buffer[0] = '\0';
+    }
+    
+    int result = fat12_write_file(drive, args[2], (const uint8_t*)content_buffer, content_length);
+    
+    if (result == 0) {
+        shell_printf("Created file: %s (%u bytes)\n", args[2], content_length);
+    } else {
+        shell_error("Failed to create file");
+        switch (result) {
+            case -1:
+                shell_print("Error: Could not read/validate filesystem\n");
+                break;
+            case -2:
+                shell_print("Error: No free clusters available\n");
+                break;
+            case -3:
+                shell_print("Error: No free directory entries\n");
+                break;
+            default:
+                shell_printf("Error: Unknown error code %d\n", result);
+                break;
+        }
+    }
+}
+
+void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]) {
+    if (argc < 3) {
+        shell_error("cat: missing arguments");
+        shell_print("Usage: cat <drive_number> <filename>\n");
+        return;
+    }
+    
+    uint8_t drive = (uint8_t)(args[1][0] - '0');
+    if (drive > 3) {
+        shell_error("cat: invalid drive number");
+        return;
+    }
+    
+    const char* filename = args[2];
+    uint32_t file_size;
+    
+    uint8_t* file_contents = fat12_read_file(drive, filename, &file_size);
+    
+    if (file_contents == NULL) {
+        shell_error("cat: file not found or could not be read");
+        return;
+    }
+    
+    if (file_size == 0) {
+        shell_print("(empty file)\n");
+        kfree(file_contents);
+        return;
+    }
+    
+    // Create null-terminated string for safe printing
+    char* display_buffer = (char*)kmalloc(file_size + 1);
+    if (!display_buffer) {
+        shell_error("cat: failed to allocate display buffer");
+        kfree(file_contents);
+        return;
+    }
+    
+    memcpy(display_buffer, file_contents, file_size);
+    display_buffer[file_size] = '\0';
+    
+    // Print contents, handling non-printable characters
+    for (uint32_t i = 0; i < file_size; i++) {
+        char c = display_buffer[i];
+        
+        if ((c >= 32 && c <= 126) || c == '\n' || c == '\r' || c == '\t') {
+            char temp[2] = {c, '\0'};
+            shell_print(temp);
+        } else {
+            shell_printf("\\x%02x", (unsigned char)c);
+        }
+    }
+    
+    if (file_size > 0 && display_buffer[file_size - 1] != '\n') {
+        shell_print("\n");
+    }
+    
+    shell_printf("\n[File: %s, Size: %u bytes]\n", filename, file_size);
+    
+    kfree(file_contents);
+    kfree(display_buffer);
+}
+
+void cmd_pause(int argc, char args[][MAX_ARG_LENGTH]) {
+    shell_print("Press any key to continue...");
+    wait_for_input();
+    shell_print("\n");
 }
 
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]) {

@@ -61,10 +61,9 @@ void context_switch(uint64_t one, uint64_t two) {
 }
 
 int load_process(void *binary_data, size_t size) {
-    scheduler.processes->code = kmalloc(size);
+    scheduler.processes->code = (uint32_t)kmalloc(size);
     if (!scheduler.processes->code) return -1;
 
-    memcpy(scheduler.processes->code, binary_data, size);
 }
 
 int create_process(void (*entry_point)(void), uint32_t priority) {

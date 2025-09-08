@@ -23,6 +23,10 @@
         "pic.h": "c",
         "io.h": "c",
         "ide.h": "c",
-        "interrupts.h": "c"
+        "interrupts.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "framebuffer.h": "c"
     }
 }

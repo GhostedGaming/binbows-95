@@ -3,8 +3,7 @@
 
 #include "shell.h"
 
-// Command parsing functions
 void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc);
 void parse_command(void);
 
-#endif // CMD_PARSER_H
+#endif

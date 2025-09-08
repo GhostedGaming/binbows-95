@@ -59,7 +59,7 @@ void fat32_write_clusters(uint8_t drive, uint32_t first_cluster, const uint8_t *
     }
 }
 
-int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
+int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data) {
     bpb_t32 bpb;
 
     if (read_bpb32(drive, &bpb) != 0 || !validate_bpb32(&bpb)) {
@@ -68,7 +68,7 @@ int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
     }
 
     uint32_t cluster_size = bpb.bytes_per_sector * bpb.sectors_per_cluster;
-    uint32_t clusters_needed = (size + cluster_size - 1) / cluster_size;
+    uint32_t clusters_needed = (sizeof(data) + cluster_size - 1) / cluster_size;
     if (clusters_needed == 0) clusters_needed = 1;
 
     uint32_t first_cluster = fat32_alloc_clusters(drive, clusters_needed);
@@ -83,10 +83,10 @@ int fat32_write_file(uint8_t drive, const char* filename, const uint8_t* data, u
         return -1;
     }
 
-    fat32_write_dir_entry(drive, &bpb, dir_entry, filename, first_cluster, size);
-    fat32_write_clusters(drive, first_cluster, data, size);
+    fat32_write_dir_entry(drive, &bpb, dir_entry, filename, first_cluster, sizeof(data));
+    fat32_write_clusters(drive, first_cluster, data, sizeof(data));
 
-    serial_printf("FAT32: File written: %s size: %u clusters: %u\n", filename, size, clusters_needed);
+    serial_printf("FAT32: File written: %s size: %u clusters: %u\n", filename, sizeof(data), clusters_needed);
     return 0;
 }
 

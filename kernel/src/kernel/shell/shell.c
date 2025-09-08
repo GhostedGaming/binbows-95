@@ -1,35 +1,28 @@
+#include <shell.h>
 #include <serial.h>
 #include <mem.h>
 #include <framebuffer.h>
+#include <ps2_keyboard.h>
 #include <util.h>
-#include <shell.h>
 #include <stdarg.h>
 
-const int line_height = 16;
-const int char_width = 8;
-#define text_color      rgb_to_color(255, 255, 255)
-#define bg_color        rgb_to_color(0, 0, 0)
-#define cursor_color    rgb_to_color(255, 255, 255)
-#define error_color     rgb_to_color(255, 0, 0)
-#define success_color   rgb_to_color(0, 255, 0)
+#define line_height 16
+#define char_width 8
+#define text_color rgb_to_color(255, 255, 255)
+#define bg_color rgb_to_color(0, 0, 0)
+#define cursor_color rgb_to_color(255, 255, 255)
+#define error_color rgb_to_color(255, 0, 0)
+#define success_color rgb_to_color(0, 255, 0)
 
 shell_state_t shell_state = {0};
-
-static void shell_print_welcome(void);
-static void shell_insert_char(char ch);
-static void shell_remove_chars(int start, int count);
-static void shell_add_to_history(const char *command);
+volatile uint8_t received_key = 0;
 
 void shell_init(void) {
     memset(&shell_state, 0, sizeof(shell_state));
     clear_screen();
     move_cursor_to(0, 0);
-    shell_print_welcome();
-    shell_print_prompt();
-}
-
-static void shell_print_welcome(void) {
     shell_print("Binbows v1.2\nType 'help' for available commands.\n\n");
+    shell_print_prompt();
 }
 
 void shell_print_prompt(void) {
@@ -56,10 +49,6 @@ void shell_redraw_input(void) {
             draw_text(cursor_x, prompt_y, cursor_char, bg_color, false);
         }
     }
-}
-
-void shell_draw_input_line(void) {
-    shell_redraw_input();
 }
 
 void shell_update_cursor(void) {
@@ -132,134 +121,68 @@ void shell_print_color(const char *text, uint32_t color) {
 
 void shell_print(const char *text) {
     shell_print_color(text, text_color);
-} 
-
-static void shell_utoa(unsigned long val, char *buf, int base) {
-    char *ptr = buf, *ptr1 = buf, tmp;
-    do {
-        *ptr++ = "0123456789abcdef"[val % base];
-        val /= base;
-    } while (val);
-    *ptr-- = '\0';
-    while (ptr1 < ptr) {
-        tmp = *ptr;
-        *ptr-- = *ptr1;
-        *ptr1++ = tmp;
-    }
-}
-
-static void shell_itoa(long val, char *buf, int base) {
-    if (val < 0 && base == 10) {
-        *buf++ = '-';
-        shell_utoa((unsigned long)(-val), buf, base);
-    } else {
-        shell_utoa((unsigned long)val, buf, base);
-    }
-}
-
-static void shell_write_padded(const char *str, int width, char pad) {
-    int len = 0;
-    for (const char *s = str; *s; s++) len++;
-    
-    while (len < width--) {
-        char pad_str[2] = {pad, '\0'};
-        shell_print(pad_str);
-    }
-    shell_print(str);
 }
 
 void shell_printf(const char *format, ...) {
     va_list args;
     va_start(args, format);
     
-    char buffer[64];
-    const char *fmt = format;
-    
-    while (*fmt) {
-        if (*fmt == '%') {
-            fmt++;
+    while (*format) {
+        if (*format == '%' && *(format + 1)) {
+            format++;
             
-            char pad_char = ' ';
-            int width = 0;
-            int long_flag = 0;
-            
-            if (*fmt == '0') {
-                pad_char = '0';
-                fmt++;
-            }
-            
-            while (*fmt >= '0' && *fmt <= '9') {
-                width = width * 10 + (*fmt++ - '0');
-            }
-            
-            if (*fmt == 'l') {
-                long_flag = 1;
-                fmt++;
-            }
-            
-            switch (*fmt) {
-                case 'd':
-                case 'i': {
-                    long val = long_flag ? va_arg(args, long) : va_arg(args, int);
-                    shell_itoa(val, buffer, 10);
-                    shell_write_padded(buffer, width, pad_char);
-                    break;
-                }
-                case 'u': {
-                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
-                    shell_utoa(val, buffer, 10);
-                    shell_write_padded(buffer, width, pad_char);
-                    break;
-                }
-                case 'x': {
-                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
-                    shell_utoa(val, buffer, 16);
-                    shell_write_padded(buffer, width, pad_char);
-                    break;
-                }
-                case 'X': {
-                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
-                    shell_utoa(val, buffer, 16);
-                    for (char *p = buffer; *p; p++) {
-                        if (*p >= 'a' && *p <= 'f') *p = *p - 'a' + 'A';
+            switch (*format) {
+                case 'd': {
+                    int val = va_arg(args, int);
+                    char buffer[32];
+                    int len = 0;
+                    int temp = val;
+                    
+                    if (val < 0) {
+                        shell_print("-");
+                        val = -val;
                     }
-                    shell_write_padded(buffer, width, pad_char);
-                    break;
-                }
-                case 'p': {
-                    void *ptr = va_arg(args, void *);
-                    shell_print("0x");
-                    shell_utoa((uintptr_t)ptr, buffer, 16);
-                    shell_write_padded(buffer, width ? width : 16, '0');
-                    break;
-                }
-                case 'c': {
-                    char ch = (char)va_arg(args, int);
-                    char temp[2] = {ch, '\0'};
-                    shell_print(temp);
+                    
+                    if (val == 0) {
+                        shell_print("0");
+                    } else {
+                        while (temp > 0) {
+                            buffer[len++] = '0' + (temp % 10);
+                            temp /= 10;
+                        }
+                        for (int i = len - 1; i >= 0; i--) {
+                            char c[2] = {buffer[i], '\0'};
+                            shell_print(c);
+                        }
+                    }
                     break;
                 }
                 case 's': {
                     char *str = va_arg(args, char *);
-                    if (!str) str = "(null)";
-                    shell_print(str);
+                    if (str) shell_print(str);
+                    else shell_print("(null)");
+                    break;
+                }
+                case 'c': {
+                    char c = (char)va_arg(args, int);
+                    char temp[2] = {c, '\0'};
+                    shell_print(temp);
                     break;
                 }
                 case '%':
                     shell_print("%");
                     break;
-                default:
-                    shell_print("%");
-                    char temp[2] = {*fmt, '\0'};
+                default: {
+                    char temp[2] = {*format, '\0'};
                     shell_print(temp);
                     break;
+                }
             }
-            fmt++;
         } else {
-            char temp[2] = {*fmt, '\0'};
+            char temp[2] = {*format, '\0'};
             shell_print(temp);
-            fmt++;
         }
+        format++;
     }
     
     va_end(args);
@@ -276,7 +199,7 @@ void shell_success(const char *text) {
     shell_print("\n");
 }
 
-static void shell_insert_char(char ch) {
+void insert_character(char ch) {
     if (shell_state.input_index >= MAX_INPUT_LENGTH - 1) return;
     
     memmove(&shell_state.input_buffer[shell_state.cursor_pos + 1],
@@ -289,33 +212,29 @@ static void shell_insert_char(char ch) {
     shell_state.input_buffer[shell_state.input_index] = '\0';
 }
 
-static void shell_remove_chars(int start, int count) {
-    if (start < 0 || start >= shell_state.input_index || count <= 0) return;
+void remove_character(int pos) {
+    if (pos < 0 || pos >= shell_state.input_index) return;
     
-    int actual_count = (start + count > shell_state.input_index) ? 
-                       shell_state.input_index - start : count;
+    memmove(&shell_state.input_buffer[pos],
+            &shell_state.input_buffer[pos + 1],
+            shell_state.input_index - pos);
     
-    memmove(&shell_state.input_buffer[start],
-            &shell_state.input_buffer[start + actual_count],
-            shell_state.input_index - start - actual_count + 1);
-    
-    shell_state.input_index -= actual_count;
-    if (shell_state.cursor_pos > start) {
-        shell_state.cursor_pos = (shell_state.cursor_pos > start + actual_count) ?
-                                 shell_state.cursor_pos - actual_count : start;
+    shell_state.input_index--;
+    if (shell_state.cursor_pos > pos) {
+        shell_state.cursor_pos--;
     }
 }
 
 void shell_backspace(void) {
     if (shell_state.cursor_pos > 0) {
-        shell_remove_chars(shell_state.cursor_pos - 1, 1);
+        remove_character(shell_state.cursor_pos - 1);
         shell_redraw_input();
     }
 }
 
 void shell_delete(void) {
     if (shell_state.cursor_pos < shell_state.input_index) {
-        shell_remove_chars(shell_state.cursor_pos, 1);
+        remove_character(shell_state.cursor_pos);
         shell_redraw_input();
     }
 }
@@ -350,15 +269,8 @@ void shell_clear_input(void) {
     shell_redraw_input();
 }
 
-static void shell_add_to_history(const char *command) {
+void add_to_history(const char *command) {
     if (!strlen(command)) return;
-    
-    int prev_index = (shell_state.history_index - 1 + MAX_HISTORY_ENTRIES) % MAX_HISTORY_ENTRIES;
-    if (strlen(shell_state.history[prev_index]) > 0 && 
-        strcmp(shell_state.history[prev_index], command) == 0) {
-        shell_state.history_current = shell_state.history_index;
-        return;
-    }
     
     strcpy(shell_state.history[shell_state.history_index], command);
     shell_state.history_index = (shell_state.history_index + 1) % MAX_HISTORY_ENTRIES;
@@ -396,15 +308,27 @@ void shell_cancel_input(void) {
     shell_redraw_input();
 }
 
+char wait_for_input(void) {
+    received_key = 0;
+    
+    while (!received_key) {
+        keyboard_handler(NULL);
+        asm volatile ("nop");
+    }
+    
+    char result = get_character(received_key);
+    shell_backspace();
+    return (char)received_key;
+}
+
 char *input(char received) {
     switch (received) {
         case '\n':
         case '\r':
             shell_state.input_buffer[shell_state.input_index] = '\0';
-            strncpy(shell_state.command_buffer, shell_state.input_buffer, sizeof(shell_state.command_buffer) - 1);
-            shell_state.command_buffer[sizeof(shell_state.command_buffer) - 1] = '\0';
+            strcpy(shell_state.command_buffer, shell_state.input_buffer);
             if (strlen(shell_state.command_buffer) > 0) {
-                shell_add_to_history(shell_state.command_buffer);
+                add_to_history(shell_state.command_buffer);
             }
             shell_newline();
             shell_clear_input();
@@ -415,59 +339,39 @@ char *input(char received) {
             shell_backspace();
             return NULL;
             
-        case 3:  // Ctrl+C
+        case 3:
             shell_cancel_input();
             return NULL;
             
-        case 4:  // Ctrl+D
+        case 4:
             shell_delete();
             return NULL;
             
-        case 1:  // Ctrl+A
+        case 1:
             shell_move_cursor_home();
             return NULL;
             
-        case 5:  // Ctrl+E
+        case 5:
             shell_move_cursor_end();
             return NULL;
             
-        case 12:  // Ctrl+L
+        case 12:
             clear_screen();
             move_cursor_to(0, 0);
             shell_print_prompt();
             shell_redraw_input();
             return NULL;
             
-        case 11:  // Ctrl+K
-            shell_state.input_buffer[shell_state.cursor_pos] = '\0';
-            shell_state.input_index = shell_state.cursor_pos;
-            shell_redraw_input();
-            return NULL;
-            
-        case 21:  // Ctrl+U
+        case 21:
             shell_clear_input();
             return NULL;
             
-        case 23: { // Ctrl+W
-            if (shell_state.cursor_pos > 0) {
-                int start = shell_state.cursor_pos - 1;
-                while (start > 0 && shell_state.input_buffer[start] == ' ') start--;
-                while (start > 0 && shell_state.input_buffer[start] != ' ') start--;
-                if (shell_state.input_buffer[start] == ' ') start++;
-                
-                int chars_to_remove = shell_state.cursor_pos - start;
-                shell_remove_chars(start, chars_to_remove);
-                shell_redraw_input();
-            }
-            return NULL;
-        }
-            
-        case 27:  // Escape
+        case 27:
             return NULL;
             
         default:
             if (received >= 32 && received <= 126) {
-                shell_insert_char(received);
+                insert_character(received);
                 shell_redraw_input();
             }
             return NULL;

@@ -1,9 +1,8 @@
 #include <fat12.h>
 
-int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data) {
+// Updated fat12_write_file with size parameter
+int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data, uint32_t size) {
     bpb_t12 bpb;
-    
-    uint32_t size = strlen((const char*)data);
 
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB in fat12_write_file\n");
@@ -23,13 +22,13 @@ int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data) {
     uint16_t first_cluster = fat12_alloc_clusters(drive, clusters_needed);
     if (first_cluster == 0) {
         serial_printf("No free clusters available\n");
-        return -1;
+        return -2;  // Specific error code for no free clusters
     }
     
     int dir_entry = fat12_find_free_root_dir_entry(drive, &bpb);
     if (dir_entry == -1) {
         serial_printf("No free directory entry\n");
-        return -1;
+        return -3;  // Specific error code for no free directory entries
     }
     
     fat12_write_dir_entry(drive, &bpb, dir_entry, filename, first_cluster, size);
@@ -39,17 +38,18 @@ int fat12_write_file(uint8_t drive, const char* filename, const uint8_t* data) {
     return 0;
 }
 
-bool fat12_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
+// Updated fat12_read_file that returns allocated buffer
+uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out) {
     bpb_t12 bpb;
     
     if (read_bpb(drive, &bpb) != 0) {
         serial_printf("Failed to read BPB\n");
-        return false;
+        return NULL;
     }
     
     if (!validate_bpb(&bpb)) {
         serial_printf("Invalid BPB - filesystem may not be formatted properly\n");
-        return false;
+        return NULL;
     }
     
     uint32_t root_dir_sectors = ((bpb.root_entry_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
@@ -78,7 +78,7 @@ bool fat12_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
 
             if (entry->name[0] == 0x00) {
                 serial_printf("End of directory reached\n");
-                return false;
+                return NULL;
             }
             
             if (entry->name[0] == 0xE5) {
@@ -95,17 +95,26 @@ bool fat12_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
                 
                 uint16_t cluster = entry->first_cluster_low;
                 uint32_t file_size = entry->file_size;
-                uint32_t bytes_read = 0;
                 uint32_t cluster_size = bpb.bytes_per_sector * bpb.sectors_per_cluster;
+
+                // Allocate buffer for file contents using kernel allocator
+                uint8_t *buffer = (uint8_t*)kmalloc(file_size);
+                if (!buffer) {
+                    serial_printf("Failed to allocate memory for file (%u bytes)\n", file_size);
+                    return NULL;
+                }
+
+                uint32_t bytes_read = 0;
 
                 // Read FAT table
                 uint8_t fat_table[512 * 12];
                 if (ide_read_sectors(drive, fat_size, bpb.reserved_sector_count, fat_table) != 0) {
                     serial_printf("Failed to read FAT table\n");
-                    return false;
+                    kfree(buffer);
+                    return NULL;
                 }
 
-                while (cluster >= 2 && cluster < 0xFF8 && bytes_read < file_size) {
+                while (cluster >= 2 && cluster < FAT12_EOC && bytes_read < file_size) {
                     uint32_t lba = data_start_lba + (cluster - 2) * bpb.sectors_per_cluster;
                     uint32_t bytes_to_read = (file_size - bytes_read > cluster_size) ? 
                                            cluster_size : (file_size - bytes_read);
@@ -113,7 +122,8 @@ bool fat12_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
                     uint8_t cluster_data[cluster_size];
                     if (ide_read_sectors(drive, bpb.sectors_per_cluster, lba, cluster_data) != 0) {
                         serial_printf("Failed to read cluster %u\n", cluster);
-                        break;
+                        kfree(buffer);
+                        return NULL;
                     }
                     
                     memcpy(buffer + bytes_read, cluster_data, bytes_to_read);
@@ -126,13 +136,25 @@ bool fat12_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
 
                 *size_out = bytes_read;
                 serial_printf("Successfully read %u bytes\n", bytes_read);
-                return true;
+                return buffer; // Caller must kfree() this buffer
             }
         }
     }
 
     serial_printf("File not found\n");
-    return false;
+    return NULL;
+}
+
+// Optional: Keep the old function for backward compatibility
+bool fat12_read_file_to_buffer(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
+    uint8_t *file_data = fat12_read_file(drive, filename, size_out);
+    if (!file_data) {
+        return false;
+    }
+    
+    memcpy(buffer, file_data, *size_out);
+    kfree(file_data);
+    return true;
 }
 
 void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size) {
@@ -162,7 +184,7 @@ void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
     uint32_t remaining = size;
     const uint8_t *data_ptr = data;
     
-    while (remaining > 0 && current_cluster >= 2 && current_cluster < 0xFF8) {
+    while (remaining > 0 && current_cluster >= 2 && current_cluster < FAT12_EOC) {
         uint32_t lba = data_start_lba + (current_cluster - 2) * bpb.sectors_per_cluster;
         uint32_t to_write = (remaining > cluster_size) ? cluster_size : remaining;
         
@@ -180,9 +202,21 @@ void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *
         
         if (remaining > 0) {
             current_cluster = fat12_read_entry(fat, current_cluster);
+            if (current_cluster < 2 || current_cluster >= FAT12_EOC) {
+                serial_printf("Unexpected end of cluster chain while writing\n");
+                break;
+            }
         } else {
+            // Mark last cluster as EOC
+            fat12_write_entry(fat, current_cluster, 0xFFF);
             break;
         }
+    }
+
+    // Write updated FAT tables back to disk
+    for (uint8_t fat_index = 0; fat_index < bpb.num_fats; fat_index++) {
+        uint32_t fat_start_lba = bpb.reserved_sector_count + fat_index * bpb.fat_size_16;
+        ide_write_sectors(drive, bpb.fat_size_16, fat_start_lba, fat);
     }
 }
 
