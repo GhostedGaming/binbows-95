@@ -61,7 +61,7 @@ uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count) {
 }
 
 uint16_t fat12_read_entry(const uint8_t* fat, uint16_t cluster) {
-    if (cluster < 2) return 0xFFF;  // Invalid cluster
+    if (cluster < 2) return 0xFFF;
     
     uint32_t offset = cluster + (cluster / 2);
     uint16_t value = *(uint16_t*)(fat + offset);

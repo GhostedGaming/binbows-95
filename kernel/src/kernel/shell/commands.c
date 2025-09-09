@@ -175,7 +175,7 @@ void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]) {
     int result = fat12_write_file(drive, args[2], (const uint8_t*)content_buffer, content_length);
     
     if (result == 0) {
-        shell_printf("Created file: %s (%u bytes)\n", args[2], content_length);
+        shell_printf("Created file: %s (%d bytes)\n", args[2], content_length);
     } else {
         shell_error("Failed to create file");
         switch (result) {
@@ -224,7 +224,6 @@ void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]) {
         return;
     }
     
-    // Create null-terminated string for safe printing
     char* display_buffer = (char*)kmalloc(file_size + 1);
     if (!display_buffer) {
         shell_error("cat: failed to allocate display buffer");
@@ -235,7 +234,6 @@ void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]) {
     memcpy(display_buffer, file_contents, file_size);
     display_buffer[file_size] = '\0';
     
-    // Print contents, handling non-printable characters
     for (uint32_t i = 0; i < file_size; i++) {
         char c = display_buffer[i];
         
@@ -251,7 +249,7 @@ void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]) {
         shell_print("\n");
     }
     
-    shell_printf("\n[File: %s, Size: %u bytes]\n", filename, file_size);
+    shell_printf("\n[File: %s, Size: %d bytes]\n", filename, file_size);
     
     kfree(file_contents);
     kfree(display_buffer);

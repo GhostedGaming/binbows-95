@@ -73,8 +73,8 @@ void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_mkfile(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_pause(int argc, char args[][MAX_ARG_LENGTH]);
-void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
 extern const shell_command_t commands[];
 

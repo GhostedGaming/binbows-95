@@ -36,7 +36,7 @@ typedef struct {
 
 // Directory Entry structure
 typedef struct {
-    char name[MAX_FILE_NAME]; // 8.3 filename format (no null terminator)
+    char name[MAX_FILE_NAME];        // 8.3 filename format (no null terminator)
     uint8_t attr;
     uint8_t reserved;
     uint8_t creation_time_tenths;
@@ -62,30 +62,25 @@ typedef struct {
 // FAT12 end-of-cluster marker
 #define FAT12_EOC 0xFF8
 
-// Global BPB cache to avoid repeated reads
 static bpb_t12 cached_bpb12;
 static bool bpb_cached12 = false;
 static uint8_t cached_drive12 = 0xFF;
 
-// Function declarations
-
-// File operations
 uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out);
+bool fat12_read_file_to_buffer(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out);
 int fat12_write_file(uint8_t drive, const char *filename, const uint8_t *data, uint32_t size);
 char* fat12_read_files(uint8_t drive);
 
-// Formatting and initialization
 void format_fat12(uint8_t drive, ...);
+void fat_init(uint8_t drive, uint8_t reserved_sector_count, uint8_t num_fats, uint8_t fat_size_16);
 
-// Cluster management
 uint16_t fat12_alloc_clusters(uint8_t drive, uint16_t count);
 void fat12_write_clusters(uint8_t drive, uint16_t first_cluster, const uint8_t *data, uint32_t size);
 
-// Directory operations
 void fat12_write_dir_entry(uint8_t drive, bpb_t12* bpb, int index, const char* filename, uint16_t first_cluster, uint32_t size);
+void fat12_write_subdir(uint8_t drive, bpb_t12* bpb, int parent_dir_index, const char* dirname, uint16_t first_cluster);
 int fat12_find_free_root_dir_entry(uint8_t drive, bpb_t12* bpb);
 
-// Internal helper functions
 int read_bpb(uint8_t drive, bpb_t12 *bpb);
 bool validate_bpb(bpb_t12 *bpb);
 uint16_t fat12_read_entry(const uint8_t* fat, uint16_t cluster);

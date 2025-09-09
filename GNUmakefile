@@ -37,8 +37,20 @@ tools:
 .PHONY: ide-image
 ide-image:
 	@if [ ! -f ide.img ]; then \
-		echo "Creating ide.img (32MB raw disk image)..."; \
-		qemu-img create -f raw ide.img 32M; \
+		echo "Creating ide.img (8MB raw disk image for fat12)..."; \
+		qemu-img create -f raw ide.img 8M; \
+		echo "Formatting as FAT12..."; \
+		sudo mkfs.fat -F 12 -v -n "TESTDISK" ide.img ::; \
+		if [ -d test ]; then \
+			echo "Copying test files to ide.img..."; \
+			mmd -i ide.img ::/test 2>/dev/null || true; \
+			for file in test/*; do \
+				if [ -f "$$file" ]; then \
+					echo "Copying $$file..."; \
+					mcopy -i ide.img "$$file" ::/test/; \
+				fi; \
+			done; \
+		fi; \
 	fi
 
 .PHONY: ahci-image
@@ -46,7 +58,25 @@ ahci-image:
 	@if [ ! -f ahci.img ]; then \
 		echo "Creating ahci.img (32MB raw disk image)..."; \
 		qemu-img create -f raw ahci.img 32M; \
+		echo "Formatting as FAT12..."; \
+		mformat -F -v "AHCIDISK" -i ahci.img ::; \
+		if [ -d test ]; then \
+			echo "Copying test files to ahci.img..."; \
+			mmd -i ahci.img ::/test 2>/dev/null || true; \
+			for file in test/*; do \
+				if [ -f "$$file" ]; then \
+					echo "Copying $$file..."; \
+					mcopy -i ahci.img "$$file" ::/test/; \
+				fi; \
+			done; \
+		fi; \
 	fi
+
+# Add a target to rebuild images with test files
+.PHONY: rebuild-images
+rebuild-images:
+	rm -f ide.img ahci.img
+	$(MAKE) ide-image ahci-image
 
 .PHONY: run-x86_64
 run-x86_64: clean $(IMAGE_NAME).iso ide-image ahci-image

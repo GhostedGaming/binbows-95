@@ -39,11 +39,17 @@ bool validate_bpb(bpb_t12 *bpb) {
         serial_printf("Invalid bytes_per_sector: %u\n", bpb->bytes_per_sector);
         return false;
     }
-    if (bpb->sectors_per_cluster == 0) {
+    // Allow multiple sectors per cluster
+    if (bpb->sectors_per_cluster == 0 || bpb->sectors_per_cluster > 128) {
         serial_printf("Invalid sectors_per_cluster: %u\n", bpb->sectors_per_cluster);
         return false;
     }
-    if (bpb->num_fats == 0) {
+    // Allow multiple reserved sectors  
+    if (bpb->reserved_sector_count == 0) {
+        serial_printf("Invalid reserved_sector_count: %u\n", bpb->reserved_sector_count);
+        return false;
+    }
+    if (bpb->num_fats == 0 || bpb->num_fats > 2) {
         serial_printf("Invalid num_fats: %u\n", bpb->num_fats);
         return false;
     }
