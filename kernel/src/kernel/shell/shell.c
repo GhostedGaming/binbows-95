@@ -309,16 +309,41 @@ void shell_cancel_input(void) {
 }
 
 char wait_for_input(void) {
+    uint64_t saved_flags = 0;
+    int had_interrupts = 0;
+
+    // Clear any previous key and wait for the next keypress.
+    // Use the HLT instruction with interrupts enabled so the CPU
+    // sleeps until an interrupt arrives instead of busy-waiting.
     received_key = 0;
-    
-    while (!received_key) {
-        keyboard_handler(NULL);
-        asm volatile ("nop");
+
+    // Save RFLAGS so we can restore the interrupt flag (IF) when
+    // done. Then enable interrupts if they were disabled so the
+    // keyboard IRQ can fire while we HLT.
+    asm volatile("pushfq\n popq %0" : "=m"(saved_flags));
+
+    had_interrupts = (saved_flags & (1 << 9)) != 0;
+    if (!had_interrupts) {
+        asm volatile ("sti");
     }
-    
+
+    while (!received_key) {
+        // Halt until the next interrupt to avoid spinning and to
+        // allow other IRQs to run.
+        asm volatile ("hlt");
+    }
+
+    // Restore original interrupt state.
+    if (!had_interrupts) {
+        asm volatile ("cli");
+    }
+
+    // We got a key. Mirror previous behavior: translate it and
+    // perform a backspace to remove any echo in the input buffer
+    // if necessary.
     char result = get_character(received_key);
     shell_backspace();
-    return (char)received_key;
+    return result;
 }
 
 char *input(char received) {

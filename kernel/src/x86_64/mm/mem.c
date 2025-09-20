@@ -22,6 +22,50 @@ static size_t align_up(size_t size, size_t alignment) {
     return (size + alignment - 1) & ~(alignment - 1);
 }
 
+// Save interrupt flag and disable interrupts. Returns the original RFLAGS.
+static inline unsigned long save_and_cli(void) {
+    unsigned long flags;
+    asm volatile("pushfq; pop %0" : "=r" (flags) :: "memory");
+    asm volatile("cli" ::: "memory");
+    return flags;
+}
+
+// Restore interrupt state based on saved RFLAGS
+static inline void restore_flags(unsigned long flags) {
+    if (flags & (1UL << 9)) {
+        asm volatile("sti" ::: "memory");
+    }
+}
+
+// Insert block into free list sorted by virtual address (ascending)
+static void insert_free_block_sorted(free_list_block *block) {
+    if (!free_list_head || block < free_list_head) {
+        block->next = free_list_head;
+        free_list_head = block;
+        return;
+    }
+
+    free_list_block *cur = free_list_head;
+    while (cur->next && cur->next < block) cur = cur->next;
+    block->next = cur->next;
+    cur->next = block;
+}
+
+// Coalesce adjacent free blocks (assumes list sorted by address)
+static void coalesce_free_list(void) {
+    free_list_block *cur = free_list_head;
+    while (cur && cur->next) {
+        uint8_t *cur_end = (uint8_t *)cur + sizeof(free_list_block) + cur->size;
+        if (cur_end == (uint8_t *)cur->next) {
+            // adjacent: merge cur and cur->next
+            cur->size += sizeof(free_list_block) + cur->next->size;
+            cur->next = cur->next->next;
+        } else {
+            cur = cur->next;
+        }
+    }
+}
+
 void init_allocator() {
     if (!memmap_request.response) {
         serial_printf("Memmap response was null\n");
@@ -65,8 +109,8 @@ void init_allocator() {
             // Place the first free_list_block header at the *virtual* address
             free_list_block *block = (free_list_block *)phys_to_virt(phys_start);
             block->size = usable_len - sizeof(free_list_block);
-            block->next = free_list_head;
-            free_list_head = block;
+            block->next = NULL;
+            insert_free_block_sorted(block);
             blocks_added++;
 
             serial_printf("Added block %d: vaddr=0x%lx (phys=0x%lx) size=%lu\n",
@@ -79,67 +123,81 @@ void init_allocator() {
         return;
     }
 
+    // coalesce adjacent regions we may have just inserted
+    coalesce_free_list();
+
     serial_printf("Allocator initialized with %d blocks (HHDM=0x%lx)\n", blocks_added, hhdm);
 }
 
 void *kmalloc(size_t size) {
     if (size == 0) return NULL;
     if (free_list_head == NULL) return NULL;
-    
+
     size = align_up(size, ALIGN_SIZE);
     if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
-    
+
+    unsigned long flags = save_and_cli();
     free_list_block **current = &free_list_head;
-    
+
     while (*current != NULL) {
         free_list_block *block = *current;
-        
+
         if (block->size >= size) {
             if (block->size >= size + sizeof(free_list_block) + MIN_ALLOC_SIZE) {
                 free_list_block *new_block = (free_list_block *)((uint8_t *)block + sizeof(free_list_block) + size);
                 new_block->size = block->size - size - sizeof(free_list_block);
                 new_block->next = block->next;
-                
+
                 block->size = size;
                 block->next = new_block;
             }
-            
-            *current = block->next;
+
+            *current = block->next; // remove allocated block (or replace with remainder)
+            restore_flags(flags);
             return (uint8_t *)block + sizeof(free_list_block);
         }
-        
+
         current = &(block->next);
     }
-    
+
+    restore_flags(flags);
     return NULL;
 }
 
 void kfree(void *ptr) {
     if (ptr == NULL) return;
-    
+
     free_list_block *block = (free_list_block *)((uint8_t *)ptr - sizeof(free_list_block));
-    block->next = free_list_head;
-    free_list_head = block;
+
+    unsigned long flags = save_and_cli();
+
+    // insert sorted and coalesce with neighbors
+    insert_free_block_sorted(block);
+
+    // coalesce possibly with previous/next
+    coalesce_free_list();
+
+    restore_flags(flags);
 }
 
 void debug_free_list() {
     serial_printf("=== Free List ===\n");
-    
+
     if (free_list_head == NULL) {
         serial_printf("Empty\n");
         return;
     }
-    
+
     free_list_block *current = free_list_head;
     int count = 0;
-    
-    while (current != NULL && count < 10) {
-        serial_printf("Block %d: 0x%lx size=%lu next=0x%lx\n", 
+
+    while (current != NULL && count < 40) {
+        serial_printf("Block %d: 0x%lx size=%lu next=0x%lx\n",
                      count, (uint64_t)current, current->size, (uint64_t)current->next);
         current = current->next;
         count++;
     }
-    
+
     serial_printf("=== End ===\n");
 }
 
@@ -147,31 +205,31 @@ void print_memory_stats() {
     size_t total_free = 0;
     int block_count = 0;
     free_list_block *current = free_list_head;
-    
+
     while (current != NULL) {
         total_free += current->size;
         block_count++;
         current = current->next;
     }
-    
+
     serial_printf("Stats: %d blocks, %lu bytes free\n", block_count, total_free);
 }
 
 void test_allocator() {
     serial_printf("=== Test ===\n");
-    
+
     void *ptr1 = kmalloc(64);
     serial_printf("Alloc 64: 0x%lx\n", (uint64_t)ptr1);
-    
+
     void *ptr2 = kmalloc(128);
     serial_printf("Alloc 128: 0x%lx\n", (uint64_t)ptr2);
-    
+
     kfree(ptr1);
     serial_printf("Freed first\n");
-    
+
     kfree(ptr2);
     serial_printf("Freed second\n");
-    
+
     print_memory_stats();
     serial_printf("=== End Test ===\n");
 }

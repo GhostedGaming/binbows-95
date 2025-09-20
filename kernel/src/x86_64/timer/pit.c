@@ -14,7 +14,7 @@ void on_irq0(void) {
 void timer_wait(uint32_t ticks) {
     uint64_t start_ticks = timer_ticks;
     while (timer_ticks < start_ticks + ticks) {
-        __asm__ volatile ("hlt");
+        asm volatile ("hlt");
     }
 }
 
