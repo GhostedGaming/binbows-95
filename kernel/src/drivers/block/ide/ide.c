@@ -36,3 +36,11 @@ void ide_initialize(void) {
         }
     }
 }
+
+/* ============================================================================
+ * HELPER FUNCTIONS
+ * ============================================================================ */
+uint64_t read_total_sectors(uint8_t drive_num) {
+    uint64_t total_sectors = ide_devices[drive_num].Size;
+    return total_sectors;
+}

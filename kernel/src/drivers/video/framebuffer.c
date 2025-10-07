@@ -29,6 +29,13 @@ void clear_screen() {
     }
 }
 
+void fill_screen(uint32_t color) {
+    uint64_t pixels = (uint64_t)fb_width * fb_height;
+    for (uint64_t i = 0; i < pixels; i++) {
+        fb_ptr[i] = color;
+    }
+}
+
 void init_fb() {
     while (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count == 0);
 
@@ -40,11 +47,7 @@ void init_fb() {
 
     fb_ptr = (uint32_t *)framebuffer->address;
 
-    // Clear screen to black
-    uint64_t pixels = (uint64_t)fb_width * fb_height;
-    for (uint64_t i = 0; i < pixels; i++) {
-        fb_ptr[i] = 0x00000000;
-    }
+    clear_screen();
 }
 
 void draw_char(int x, int y, char c, uint32_t color) {
@@ -84,41 +87,64 @@ void draw_text(int x, int y, const char *str, uint32_t color, bool clear) {
     }
 }
 
-void draw_char_with_bg(int x, int y, char c, uint32_t fg_color, uint32_t bg_color) {
-    if (c >= 32 && c <= 126) {
-        const uint8_t *char_bitmap = font8x16[(unsigned char)c - 32];
-        
-        for (int row = 0; row < FONT_HEIGHT; row++) {
-            uint8_t byte = char_bitmap[row];
-            for (int col = 0; col < FONT_WIDTH; col++) {
-                int px = x + col;
-                int py = y + row;
-                if (px >= 0 && px < fb_width && py >= 0 && py < fb_height) {
-                    uint32_t color = (byte & (0x80 >> col)) ? fg_color : bg_color;
-                    fb_ptr[py * fb_pitch + px] = color;
-                }
-            }
-        }
-    } else {
-        // Draw background for invalid characters
-        for (int row = 0; row < FONT_HEIGHT; row++) {
-            for (int col = 0; col < FONT_WIDTH; col++) {
-                int px = x + col;
-                int py = y + row;
-                if (px >= 0 && px < fb_width && py >= 0 && py < fb_height) {
-                    fb_ptr[py * fb_pitch + px] = bg_color;
-                }
-            }
+void scroll_screen(void) {
+    for (int y = 0; y < fb_height - FONT_HEIGHT; y++) {
+        memmove(&fb_ptr[y * fb_pitch], 
+                &fb_ptr[(y + FONT_HEIGHT) * fb_pitch], 
+                fb_width * sizeof(uint32_t));
+    }
+    
+    for (int y = fb_height - FONT_HEIGHT; y < fb_height; y++) {
+        for (int x = 0; x < fb_width; x++) {
+            fb_ptr[y * fb_pitch + x] = 0x00000000;
         }
     }
+    
+    cursor_position_y -= FONT_HEIGHT;
 }
 
-void draw_text_with_bg(int x, int y, const char *str, uint32_t fg_color, uint32_t bg_color) {
-    int current_x = x;
+void print_text(const char *str, uint32_t color) {
+    if (!str) return;
     
-    for (int i = 0; str[i]; i++) {
-        draw_char_with_bg(current_x, y, str[i], fg_color, bg_color);
-        current_x += FONT_WIDTH;
+    while (*str) {
+        if (*str == '\n') {
+            cursor_position_x = 0;
+            cursor_position_y += FONT_HEIGHT;
+            
+            if (cursor_position_y >= fb_height - FONT_HEIGHT) {
+                scroll_screen();
+            }
+        } else if (*str == '\r') {
+            cursor_position_x = 0;
+        } else if (*str == '\t') {
+            int spaces = 4 - (cursor_position_x / FONT_WIDTH) % 4;
+            for (int i = 0; i < spaces; i++) {
+                draw_char(cursor_position_x, cursor_position_y, ' ', color);
+                cursor_position_x += FONT_WIDTH;
+                
+                if (cursor_position_x >= fb_width - FONT_WIDTH) {
+                    cursor_position_x = 0;
+                    cursor_position_y += FONT_HEIGHT;
+                    
+                    if (cursor_position_y >= fb_height - FONT_HEIGHT) {
+                        scroll_screen();
+                    }
+                }
+            }
+        } else {
+            draw_char(cursor_position_x, cursor_position_y, *str, color);
+            cursor_position_x += FONT_WIDTH;
+            
+            if (cursor_position_x >= fb_width - FONT_WIDTH) {
+                cursor_position_x = 0;
+                cursor_position_y += FONT_HEIGHT;
+                
+                if (cursor_position_y >= fb_height - FONT_HEIGHT) {
+                    scroll_screen();
+                }
+            }
+        }
+        str++;
     }
 }
 
@@ -129,13 +155,6 @@ void draw_text_centered(int y, const char *str, uint32_t color) {
     draw_text(cx, y, str, color, false);
 }
 
-void draw_text_centered_with_bg(int y, const char *str, uint32_t fg_color, uint32_t bg_color) {
-    int len = strlen(str);
-    int str_width = len * FONT_WIDTH;
-    int cx = (fb_width - str_width) / 2;
-    draw_text_with_bg(cx, y, str, fg_color, bg_color);
-}
-
 void draw_text_center_screen(const char *str, uint32_t color) {
     int len = strlen(str);
     int str_width = len * FONT_WIDTH;
@@ -144,29 +163,11 @@ void draw_text_center_screen(const char *str, uint32_t color) {
     draw_text(cx, cy, str, color, false);
 }
 
-void draw_text_center_screen_with_bg(const char *str, uint32_t fg_color, uint32_t bg_color) {
-    int len = strlen(str);
-    int str_width = len * FONT_WIDTH;
-    int cx = (fb_width - str_width) / 2;
-    int cy = (fb_height - FONT_HEIGHT) / 2;
-    draw_text_with_bg(cx, cy, str, fg_color, bg_color);
-}
-
 void draw_rect(int x, int y, int width, int height, uint32_t color) {
     for (int py = y; py < y + height && py < fb_height; py++) {
         for (int px = x; px < x + width && px < fb_width; px++) {
             if (px >= 0 && py >= 0) {
                 fb_ptr[py * fb_pitch + px] = color;
-            }
-        }
-    }
-}
-
-void remove_rect(int x, int y, int width, int height, uint32_t bg_color) {
-    for (int py = y; py < y + height && py < fb_height; py++) {
-        for (int px = x; px < x + width && px < fb_width; px++) {
-            if (px >= 0 && py >= 0) {
-                fb_ptr[py * fb_pitch + px] = bg_color;
             }
         }
     }

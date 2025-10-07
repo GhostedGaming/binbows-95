@@ -27,6 +27,7 @@
         "array": "c",
         "string_view": "c",
         "initializer_list": "c",
-        "framebuffer.h": "c"
+        "framebuffer.h": "c",
+        "elixir.h": "c"
     }
 }

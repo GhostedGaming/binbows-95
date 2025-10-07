@@ -6,7 +6,7 @@ MAKEFLAGS += -rR
 ARCH := x86_64
 
 # QEMU flags with ac97 sound card and 1920x1080 resolution
-QEMUFLAGS := -m 2G -serial stdio -device ac97 -device VGA,xres=1920,yres=1080
+QEMUFLAGS := -m 5G -serial stdio -device ac97 -device VGA,xres=1920,yres=1080
 
 # Image name
 override IMAGE_NAME := template-$(ARCH)

@@ -149,6 +149,15 @@ int tolower(int c) {
     return c;
 }
 
+uint32_t hash_string(const char *str) {
+    uint32_t hash = 0x811c9dc5;
+    while (*str) {
+        hash ^= (uint8_t)*str++;
+        hash *= 0x01000193;
+    }
+    return hash;
+}
+
 void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;
     const uint8_t *restrict psrc = (const uint8_t *restrict)src;

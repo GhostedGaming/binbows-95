@@ -46,6 +46,7 @@ ifeq ($(ARCH),x86_64)
 		-I include/x86_64 \
 		-I include/kernel \
 		-I include/kernel/lib \
+		-I include/kernel/fs \
         -I bin/includes \
 		-I limine-protocol/include \
 		-isystem freestnd-c-hdrs/include \
