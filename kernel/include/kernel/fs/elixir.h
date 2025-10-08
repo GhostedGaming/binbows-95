@@ -14,6 +14,6 @@ struct super_block {
 };
 
 struct super_block create_super_block(uint64_t total_blocks, uint32_t block_size);
-void init_elixir();
+int init_elixir(uint8_t drive_num);
 
 #endif

@@ -47,6 +47,13 @@ ifeq ($(ARCH),x86_64)
 		-I include/kernel \
 		-I include/kernel/lib \
 		-I include/kernel/fs \
+		-I include/kernel/shell \
+		-I include/drivers/block/ide \
+		-I include/drivers/block/sata \
+		-I include/drivers/keyboard \
+		-I include/drivers/pci \
+		-I include/drivers/sound \
+		-I include/drivers/video \
         -I bin/includes \
 		-I limine-protocol/include \
 		-isystem freestnd-c-hdrs/include \
