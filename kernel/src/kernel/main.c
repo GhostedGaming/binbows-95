@@ -30,19 +30,19 @@ void kernel_main(void) {
     init_timer();
     asm volatile ("sti");
 
+    init_fb();
+
     ide_initialize();
 
-    create_process(test_scheduler, 2);
-    create_process(shell_main, 1);
+    draw_text_center_screen("Hello world!", rgb_to_color(255, 255, 255));
+
+    create_process(test_scheduler, 1);
 
     serial_printf("System initialized!\n");
 
+    shell_init();
+
     while (1) {
-        if (scheduler_tick) {
-            scheduler_tick = false;
-            serial_printf("[DEBUG] Scheduler tick, switching process...\n");
-            change_process();
-        }
         asm volatile ("hlt");
     }
 }

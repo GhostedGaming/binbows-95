@@ -56,8 +56,6 @@ void shell_clear_input(void);
 void shell_cancel_input(void);
 char wait_for_input(void);
 
-void shell_main(void);
-
 void shell_history_up(void);
 void shell_history_down(void);
 

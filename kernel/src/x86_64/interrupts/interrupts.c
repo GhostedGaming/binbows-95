@@ -280,7 +280,8 @@ void irq_handler(uint64_t irq_number) {
     switch(irq_number) {
         case 32: // IRQ0 - PIT Timer
             on_irq0();  // Call timer tick handler
-            scheduler_tick = true;
+            change_process();
+            serial_printf(".");
             break;
 
         case 33: // IRQ1 - PS/2 Keyboard

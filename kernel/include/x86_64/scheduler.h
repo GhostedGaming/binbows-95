@@ -5,7 +5,6 @@
 #include <stdint.h>
 
 #define MAX_PROCESS_COUNT 255
-#define STACK_SIZE 4096
 
 extern volatile bool scheduler_tick;
 
@@ -35,7 +34,7 @@ typedef struct {
 } scheduler_t;
 
 void scheduler_init(void);
-void context_switch(uint64_t current_rsp, uint64_t next_rsp);
+void context_switch(uint64_t** save_rsp_location, uint64_t** load_rsp_location);
 int create_process(void (*entry_point)(void), uint32_t priority);
 void terminate_process(uint32_t pid);
 void change_process(void);

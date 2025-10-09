@@ -4,7 +4,7 @@
 #include <assert.h>
 #include <util.h>
 
-#define STACK_SIZE 4096
+#define STACK_SIZE (16 * 4096)
 #define DEFAULT_TIME_SLICE 10
 
 volatile bool scheduler_tick = false;
@@ -32,27 +32,23 @@ void free_process_stack(uint64_t* stack_base) {
 void setup_initial_stack(process_t* process) {
     uint64_t* stack = (uint64_t*)((uint8_t*)process->stack_base + STACK_SIZE);
 
-    *(--stack) = 0;     // Dummy return address (if entry point returns)
-    *(--stack) = 0;     // r15
-    *(--stack) = 0;     // r14
-    *(--stack) = 0;     // r13
-    *(--stack) = 0;     // r12
-    *(--stack) = 0;     // r11
-    *(--stack) = 0;     // r10
-    *(--stack) = 0;     // r9
-    *(--stack) = 0;     // r8
-    *(--stack) = 0;     // rbp (frame pointer should be 0 for top of call stack)
-    *(--stack) = 0;     // rdx
-    *(--stack) = 0;     // rcx
-    *(--stack) = 0;     // rbx
+    *(--stack) = (uint64_t)process->entry_point;
+    *(--stack) = 0x202; // RFLAGS (popfq)
     *(--stack) = 0;     // rax
-    *(--stack) = 0x202; // RFLAGS (interrupts enabled)
-    *(--stack) = (uint64_t)process->entry_point; // return address for context_switch
+    *(--stack) = 0;     // rbx
+    *(--stack) = 0;     // rcx
+    *(--stack) = 0;     // rdx
+    *(--stack) = 0;     // rbp
+    *(--stack) = 0;     // r8
+    *(--stack) = 0;     // r9
+    *(--stack) = 0;     // r10
+    *(--stack) = 0;     // r11
+    *(--stack) = 0;     // r12
+    *(--stack) = 0;     // r13
+    *(--stack) = 0;     // r14
+    *(--stack) = 0;     // r15
 
     process->stack_ptr = stack;
-
-    serial_printf("[SCHEDULER] Process %d stack initialized, stack_ptr=%p, entry=%p\n", 
-                  process->pid, process->stack_ptr, process->entry_point);
 }
 
 void scheduler_init(void) {
@@ -137,7 +133,6 @@ void terminate_process(uint32_t pid) {
 
     for (int i = 0; i < scheduler.process_count; i++) {
         if (scheduler.processes[i].pid == pid) {
-            serial_printf("[SCHEDULER] Terminating process PID=%d\n", pid);
 
             scheduler.processes[i].state = PROCESS_TERMINATED;
 
@@ -220,39 +215,47 @@ static int find_next_process(void) {
 
 void change_process(void) {
     if (!initialized) return;
+    if (scheduler.process_count <= 1) return;
 
-    if (scheduler.process_count <= 1) {
+    asm volatile("cli");
+
+    process_t* current_proc = &scheduler.processes[scheduler.current_process];
+    
+    if (current_proc->time_slice > 0) {
+        current_proc->time_slice--;
+    }
+    
+    if (current_proc->time_slice > 0) {
+        asm volatile("sti");
         return;
     }
 
-    int current_idx = scheduler.current_process;
     int next_idx = find_next_process();
 
-    if (next_idx == -1 || next_idx == current_idx) {
+    if (next_idx == -1 || next_idx == scheduler.current_process) {
+        current_proc->time_slice = DEFAULT_TIME_SLICE;
+        asm volatile("sti");
         return;
     }
 
-    process_t* current_proc = &scheduler.processes[current_idx];
     process_t* next_proc = &scheduler.processes[next_idx];
 
     serial_printf("[SCHEDULER] Context switch: PID %d -> PID %d\n",
                   current_proc->pid, next_proc->pid);
-    serial_printf("[SCHEDULER] Debug: &current_proc->stack_ptr=%p, &next_proc->stack_ptr=%p\n",
-                  &current_proc->stack_ptr, &next_proc->stack_ptr);
-    serial_printf("[SCHEDULER] Debug: current_proc->stack_ptr=%p, next_proc->stack_ptr=%p\n",
-                  current_proc->stack_ptr, next_proc->stack_ptr);
 
     if (current_proc->state == PROCESS_RUNNING) {
         current_proc->state = PROCESS_READY;
     }
+    
+    current_proc->time_slice = DEFAULT_TIME_SLICE;
+    next_proc->time_slice = DEFAULT_TIME_SLICE;
     next_proc->state = PROCESS_RUNNING;
-
+    
     scheduler.current_process = next_idx;
 
-    context_switch(
-        (uint64_t)(uintptr_t)&current_proc->stack_ptr,
-        (uint64_t)(uintptr_t)&next_proc->stack_ptr
-    );
+    context_switch(&current_proc->stack_ptr, &next_proc->stack_ptr);
+
+    asm volatile("sti");
 }
 
 void yield(void) {
