@@ -28,6 +28,8 @@
         "string_view": "c",
         "initializer_list": "c",
         "framebuffer.h": "c",
-        "elixir.h": "c"
+        "elixir.h": "c",
+        "timer.h": "c",
+        "scheduler.h": "c"
     }
 }

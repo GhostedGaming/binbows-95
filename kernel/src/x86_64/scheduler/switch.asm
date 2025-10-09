@@ -1,6 +1,10 @@
-global save_register_and_switch
+global context_switch
 
-save_register_and_switch:
+section .text
+
+context_switch:
+    ; Save current process context onto its stack
+    pushfq              ; Save RFLAGS
     push rax
     push rbx
     push rcx
@@ -14,12 +18,14 @@ save_register_and_switch:
     push r13
     push r14
     push r15
-    pushfq
-    
+
+    ; Save current RSP to the address pointed to by RDI
     mov [rdi], rsp
+
+    ; Load new RSP from the address pointed to by RSI
     mov rsp, [rsi]
-    
-    popfq
+
+    ; Restore next process context from its stack
     pop r15
     pop r14
     pop r13
@@ -33,4 +39,9 @@ save_register_and_switch:
     pop rcx
     pop rbx
     pop rax
+    popfq               ; Restore RFLAGS
+
+    ; Return to the next process
+    ; For a new process, this will "return" to its entry_point
+    ; For a resumed process, this continues after its last context switch
     ret

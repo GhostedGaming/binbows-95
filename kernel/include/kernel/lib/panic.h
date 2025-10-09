@@ -16,7 +16,6 @@ void print_stack_trace(void);
         } \
     } while (0)
 
-// Warning macro
 #define kwarn(fmt, ...) \
     do { \
         serial_printf("WARNING at %s:%d: ", __FILE__, __LINE__); \

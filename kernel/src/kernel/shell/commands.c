@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <util.h>
 #include <framebuffer.h>
+#include <elixir.h>
 
 extern struct ide_device ide_devices[4];
 
@@ -91,7 +92,7 @@ void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
         return;
     }
     
-    int drive_num = args[1][0] - '0';
+    uint8_t drive_num = args[1][0] - '0';
     if (drive_num < 0 || drive_num > 9) {
         shell_error("format: invalid drive number");
         return;

@@ -1,5 +1,3 @@
-#include <stddef.h>
-#include <stdint.h>
 #include <interrupts.h>
 #include <pic.h>
 #include <serial.h>
@@ -282,12 +280,7 @@ void irq_handler(uint64_t irq_number) {
     switch(irq_number) {
         case 32: // IRQ0 - PIT Timer
             on_irq0();  // Call timer tick handler
-            
-            // Uncomment when scheduler is ready:
-            // change_process();
-            
-            // Optional: Comment out this debug output once timer works
-            // serial_printf(".");
+            scheduler_tick = true;
             break;
 
         case 33: // IRQ1 - PS/2 Keyboard

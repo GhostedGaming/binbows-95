@@ -1,145 +1,193 @@
 #include <scheduler.h>
-#include <util.h>
 #include <serial.h>
-#include <assert.h>
 #include <mem.h>
+#include <assert.h>
 #include <util.h>
-
-// This file doesnt do anything yet eventually i will figure out how schedulers work
 
 #define STACK_SIZE 4096
+#define DEFAULT_TIME_SLICE 10
+
+volatile bool scheduler_tick = false;
 
 static scheduler_t scheduler = {0};
-bool initialized = false;
+static bool initialized = false;
 
-extern void save_register_and_switch(uint64_t current_stack_ptr, uint64_t next_stack_ptr);
-
-void scheduler_init() {
-    scheduler.next_pid = 1;
-    scheduler.current_process = 0;
-    scheduler.processes[0].pid = 0;
-    scheduler.processes[0].state = PROCESS_READY;
-    scheduler.processes[0].priority = 0;
-    scheduler.processes[0].stack_ptr = NULL;
-    scheduler.processes[0].stack_base = NULL;
-    scheduler.processes[0].entry_point = NULL;
-    scheduler.processes[0].time_slice = 10;
-    scheduler.processes[0].cpu_time_used = 0;
-    scheduler.process_count = 1;
-    initialized = true;
-}
-
-uint32_t* allocate_process_stack(void) {
-    uint32_t* stack = (uint32_t*)kmalloc(STACK_SIZE);
+uint64_t* allocate_process_stack(void) {
+    uint64_t* stack = (uint64_t*)kmalloc(STACK_SIZE);
     if (!stack) {
-        serial_printf("Failed to allocate process stack!\n");
+        serial_printf("[SCHEDULER] ERROR: Failed to allocate process stack!\n");
         return NULL;
     }
+    serial_printf("[SCHEDULER] Allocated stack at %p\n", stack);
     return stack;
 }
 
-void free_process_stack(uint32_t* stack_base) {
+void free_process_stack(uint64_t* stack_base) {
     if (stack_base) {
         kfree(stack_base);
+        serial_printf("[SCHEDULER] Freed stack at %p\n", stack_base);
     }
 }
 
 void setup_initial_stack(process_t* process) {
-    uint32_t* stack = (uint32_t*)process->stack_ptr;
-    *(--stack) = (uint32_t)process->entry_point;
+    uint64_t* stack = (uint64_t*)((uint8_t*)process->stack_base + STACK_SIZE);
+
+    *(--stack) = 0;     // Dummy return address (if entry point returns)
+    *(--stack) = 0;     // r15
+    *(--stack) = 0;     // r14
+    *(--stack) = 0;     // r13
+    *(--stack) = 0;     // r12
+    *(--stack) = 0;     // r11
+    *(--stack) = 0;     // r10
+    *(--stack) = 0;     // r9
+    *(--stack) = 0;     // r8
+    *(--stack) = 0;     // rbp (frame pointer should be 0 for top of call stack)
+    *(--stack) = 0;     // rdx
+    *(--stack) = 0;     // rcx
+    *(--stack) = 0;     // rbx
+    *(--stack) = 0;     // rax
+    *(--stack) = 0x202; // RFLAGS (interrupts enabled)
+    *(--stack) = (uint64_t)process->entry_point; // return address for context_switch
+
     process->stack_ptr = stack;
+
+    serial_printf("[SCHEDULER] Process %d stack initialized, stack_ptr=%p, entry=%p\n", 
+                  process->pid, process->stack_ptr, process->entry_point);
 }
 
-void context_switch(uint64_t one, uint64_t two) {
-    if (initialized != true) {
-        serial_printf("Scheduler not initialized!\n");
-        ASSERT(initialized == true);
+void scheduler_init(void) {
+    if (initialized) {
+        serial_printf("[SCHEDULER] WARNING: Already initialized!\n");
         return;
     }
-    if (one == two) return;
-    save_register_and_switch(one, two);
-}
 
-int load_process(void *binary_data, size_t size) {
-    scheduler.processes->code = (uint32_t)kmalloc(size);
-    if (!scheduler.processes->code) return -1;
+    scheduler.next_pid = 1;
+    scheduler.current_process = 0;
+    scheduler.process_count = 0;
 
+    uint64_t* stack_base = allocate_process_stack();
+    if (!stack_base) {
+        serial_printf("[SCHEDULER] FATAL: Could not allocate stack for kernel process!\n");
+        return;
+    }
+
+    scheduler.processes[0].pid = 0;
+    scheduler.processes[0].state = PROCESS_RUNNING;
+    scheduler.processes[0].priority = 0;
+    scheduler.processes[0].time_slice = DEFAULT_TIME_SLICE;
+    scheduler.processes[0].cpu_time_used = 0;
+    scheduler.processes[0].stack_base = stack_base;
+    scheduler.processes[0].entry_point = NULL;
+    scheduler.processes[0].stack_ptr = (uint64_t*)((uint8_t*)stack_base + STACK_SIZE / 2);
+
+    scheduler.process_count = 1;
+    initialized = true;
+
+    serial_printf("[SCHEDULER] Initialized with kernel process (PID 0)\n");
 }
 
 int create_process(void (*entry_point)(void), uint32_t priority) {
-    if (initialized != true) {
-        serial_printf("Scheduler not initialized!\n");
-        ASSERT(initialized == true);
+    if (!initialized) {
+        serial_printf("[SCHEDULER] ERROR: Not initialized!\n");
         return -1;
     }
+
     if (scheduler.process_count >= MAX_PROCESS_COUNT) {
-        serial_printf("Max process count reached!\n");
+        serial_printf("[SCHEDULER] ERROR: Maximum process count reached!\n");
         return -1;
     }
-    uint32_t* stack_base = allocate_process_stack();
+
+    if (!entry_point) {
+        serial_printf("[SCHEDULER] ERROR: NULL entry point!\n");
+        return -1;
+    }
+
+    uint64_t* stack_base = allocate_process_stack();
     if (!stack_base) {
         return -1;
     }
-    int new_index = scheduler.process_count;
-    scheduler.processes[new_index].pid = scheduler.next_pid++;
-    scheduler.processes[new_index].state = PROCESS_READY;
-    scheduler.processes[new_index].priority = priority;
-    scheduler.processes[new_index].entry_point = entry_point;
-    scheduler.processes[new_index].stack_base = stack_base;
-    scheduler.processes[new_index].stack_ptr = stack_base + (STACK_SIZE / sizeof(uint32_t)) - 1;
-    scheduler.processes[new_index].time_slice = 10;
-    scheduler.processes[new_index].cpu_time_used = 0;
-    setup_initial_stack(&scheduler.processes[new_index]);
+
+    int idx = scheduler.process_count;
+    
+    scheduler.processes[idx].pid = scheduler.next_pid++;
+    scheduler.processes[idx].state = PROCESS_READY;
+    scheduler.processes[idx].priority = priority;
+    scheduler.processes[idx].time_slice = DEFAULT_TIME_SLICE;
+    scheduler.processes[idx].cpu_time_used = 0;
+    scheduler.processes[idx].entry_point = entry_point;
+    scheduler.processes[idx].stack_base = stack_base;
+
+    setup_initial_stack(&scheduler.processes[idx]);
+
     scheduler.process_count++;
 
-    return scheduler.processes[new_index].pid;
+    serial_printf("[SCHEDULER] Created process PID=%d, priority=%d, entry=%p\n",
+                  scheduler.processes[idx].pid, priority, entry_point);
+
+    return scheduler.processes[idx].pid;
 }
 
 void terminate_process(uint32_t pid) {
+    if (!initialized) return;
+
+    if (pid == 0) {
+        serial_printf("[SCHEDULER] ERROR: Cannot terminate kernel process!\n");
+        return;
+    }
+
     for (int i = 0; i < scheduler.process_count; i++) {
         if (scheduler.processes[i].pid == pid) {
+            serial_printf("[SCHEDULER] Terminating process PID=%d\n", pid);
+
+            scheduler.processes[i].state = PROCESS_TERMINATED;
+
             free_process_stack(scheduler.processes[i].stack_base);
+
             for (int j = i; j < scheduler.process_count - 1; j++) {
                 scheduler.processes[j] = scheduler.processes[j + 1];
             }
+
             scheduler.process_count--;
-            if (scheduler.current_process > i) {
-                scheduler.current_process--;
-            } else if (scheduler.current_process == i) {
+
+            if (scheduler.current_process >= scheduler.process_count) {
                 scheduler.current_process = 0;
-                change_process();
+            } else if (scheduler.current_process > i) {
+                scheduler.current_process--;
             }
-            break;
+
+            return;
         }
     }
+
+    serial_printf("[SCHEDULER] WARNING: Process PID=%d not found\n", pid);
 }
 
 void block_process(uint32_t pid) {
-    for (int i = 0; i < scheduler.process_count; i++) {
-        if (scheduler.processes[i].pid == pid) {
-            scheduler.processes[i].state = PROCESS_BLOCKED;
-            break;
-        }
+    process_t* proc = get_process_by_pid(pid);
+    if (proc && proc->state == PROCESS_RUNNING) {
+        proc->state = PROCESS_BLOCKED;
+        serial_printf("[SCHEDULER] Blocked process PID=%d\n", pid);
     }
 }
 
 void unblock_process(uint32_t pid) {
-    for (int i = 0; i < scheduler.process_count; i++) {
-        if (scheduler.processes[i].pid == pid) {
-            scheduler.processes[i].state = PROCESS_READY;
-            break;
-        }
+    process_t* proc = get_process_by_pid(pid);
+    if (proc && proc->state == PROCESS_BLOCKED) {
+        proc->state = PROCESS_READY;
+        serial_printf("[SCHEDULER] Unblocked process PID=%d\n", pid);
     }
 }
 
 process_t* get_current_process(void) {
-    if (scheduler.current_process < scheduler.process_count) {
-        return &scheduler.processes[scheduler.current_process];
+    if (!initialized || scheduler.current_process >= scheduler.process_count) {
+        return NULL;
     }
-    return NULL;
+    return &scheduler.processes[scheduler.current_process];
 }
 
 process_t* get_process_by_pid(uint32_t pid) {
+    if (!initialized) return NULL;
+
     for (int i = 0; i < scheduler.process_count; i++) {
         if (scheduler.processes[i].pid == pid) {
             return &scheduler.processes[i];
@@ -148,23 +196,86 @@ process_t* get_process_by_pid(uint32_t pid) {
     return NULL;
 }
 
-void change_process() {
-    if (initialized != true) {
-        serial_printf("Scheduler not initialized!\n");
-        return;
+static int find_next_process(void) {
+    if (scheduler.process_count == 0) return -1;
+    if (scheduler.process_count == 1) return 0;
+
+    int current = scheduler.current_process;
+    int next = (current + 1) % scheduler.process_count;
+    int start = next;
+
+    do {
+        if (scheduler.processes[next].state == PROCESS_READY) {
+            return next;
+        }
+        next = (next + 1) % scheduler.process_count;
+    } while (next != start);
+
+    if (scheduler.processes[current].state == PROCESS_RUNNING) {
+        return current;
     }
+
+    return 0;
+}
+
+void change_process(void) {
+    if (!initialized) return;
+
     if (scheduler.process_count <= 1) {
         return;
     }
-    int current = scheduler.current_process;
-    int next = (current + 1) % scheduler.process_count;
-    while (scheduler.processes[next].state != PROCESS_READY && next != current) {
-        next = (next + 1) % scheduler.process_count;
+
+    int current_idx = scheduler.current_process;
+    int next_idx = find_next_process();
+
+    if (next_idx == -1 || next_idx == current_idx) {
+        return;
     }
-    if (next != current) {
-        scheduler.processes[current].state = PROCESS_READY;
-        scheduler.processes[next].state = PROCESS_RUNNING;
-        scheduler.current_process = next;
-        context_switch((uintptr_t)scheduler.processes[current].stack_ptr, (uintptr_t)scheduler.processes[next].stack_ptr);
+
+    process_t* current_proc = &scheduler.processes[current_idx];
+    process_t* next_proc = &scheduler.processes[next_idx];
+
+    serial_printf("[SCHEDULER] Context switch: PID %d -> PID %d\n",
+                  current_proc->pid, next_proc->pid);
+    serial_printf("[SCHEDULER] Debug: &current_proc->stack_ptr=%p, &next_proc->stack_ptr=%p\n",
+                  &current_proc->stack_ptr, &next_proc->stack_ptr);
+    serial_printf("[SCHEDULER] Debug: current_proc->stack_ptr=%p, next_proc->stack_ptr=%p\n",
+                  current_proc->stack_ptr, next_proc->stack_ptr);
+
+    if (current_proc->state == PROCESS_RUNNING) {
+        current_proc->state = PROCESS_READY;
+    }
+    next_proc->state = PROCESS_RUNNING;
+
+    scheduler.current_process = next_idx;
+
+    context_switch(
+        (uint64_t)(uintptr_t)&current_proc->stack_ptr,
+        (uint64_t)(uintptr_t)&next_proc->stack_ptr
+    );
+}
+
+void yield(void) {
+    process_t* current = get_current_process();
+    if (current) {
+        serial_printf("[SCHEDULER] Process PID=%d yielding\n", current->pid);
+    }
+    change_process();
+}
+
+void test_scheduler(void) {
+    serial_printf("[TEST] Process started! Getting current process...\n");
+    process_t* current = get_current_process();
+    serial_printf("[TEST] Current process retrieved: PID=%d\n", current ? current->pid : -1);
+    
+    int counter = 0;
+    while (1) {
+        current = get_current_process();
+        serial_printf("[TEST] PID=%d running (iteration %d)\n", 
+                     current ? current->pid : -1, counter++);
+        
+        for (volatile int i = 0; i < 1000000; i++);
+        
+        yield();
     }
 }

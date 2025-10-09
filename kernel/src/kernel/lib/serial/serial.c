@@ -39,7 +39,7 @@ static void write_padded(const char *str, int width, char pad) {
     write_serial(str);
 }
 
-static void utoa(unsigned long val, char *buf, int base) {
+static void utoa(unsigned long long val, char *buf, int base) {
     char *ptr = buf, *ptr1 = buf, tmp;
     do {
         *ptr++ = "0123456789abcdef"[val % base];
@@ -53,12 +53,12 @@ static void utoa(unsigned long val, char *buf, int base) {
     }
 }
 
-static void itoa(long val, char *buf, int base) {
+static void itoa(long long val, char *buf, int base) {
     if (val < 0 && base == 10) {
         *buf++ = '-';
-        utoa((unsigned long)(-val), buf, base);
+        utoa((unsigned long long)(-val), buf, base);
     } else {
-        utoa((unsigned long)val, buf, base);
+        utoa((unsigned long long)val, buf, base);
     }
 }
 
@@ -73,6 +73,7 @@ void serial_printf(const char *fmt, ...) {
             char pad_char = ' ';
             int width = 0;
             int long_flag = 0;
+            int longlong_flag = 0;
 
             if (*fmt == '0') {
                 pad_char = '0';
@@ -86,25 +87,50 @@ void serial_printf(const char *fmt, ...) {
             if (*fmt == 'l') {
                 long_flag = 1;
                 fmt++;
+                if (*fmt == 'l') {
+                    longlong_flag = 1;
+                    fmt++;
+                }
             }
 
             switch (*fmt) {
                 case 'd':
                 case 'i': {
-                    long val = long_flag ? va_arg(args, long) : va_arg(args, int);
+                    long long val;
+                    if (longlong_flag) {
+                        val = va_arg(args, long long);
+                    } else if (long_flag) {
+                        val = va_arg(args, long);
+                    } else {
+                        val = va_arg(args, int);
+                    }
                     itoa(val, buffer, 10);
                     write_padded(buffer, width, pad_char);
                     break;
                 }
                 case 'u': {
-                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
+                    unsigned long long val;
+                    if (longlong_flag) {
+                        val = va_arg(args, unsigned long long);
+                    } else if (long_flag) {
+                        val = va_arg(args, unsigned long);
+                    } else {
+                        val = va_arg(args, unsigned int);
+                    }
                     utoa(val, buffer, 10);
                     write_padded(buffer, width, pad_char);
                     break;
                 }
                 case 'x':
                 case 'X': {
-                    unsigned long val = long_flag ? va_arg(args, unsigned long) : va_arg(args, unsigned int);
+                    unsigned long long val;
+                    if (longlong_flag) {
+                        val = va_arg(args, unsigned long long);
+                    } else if (long_flag) {
+                        val = va_arg(args, unsigned long);
+                    } else {
+                        val = va_arg(args, unsigned int);
+                    }
                     utoa(val, buffer, 16);
                     if (*fmt == 'X') {
                         for (char *p = buffer; *p; p++) {
