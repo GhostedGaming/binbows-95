@@ -182,7 +182,6 @@ void keyboard_handler(struct interrupt_registers *regs) {
     
     if (key_pressed) {
         received_key = key;
-        handle_key_press(key);
     } else {
         handle_key_release(key);
     }

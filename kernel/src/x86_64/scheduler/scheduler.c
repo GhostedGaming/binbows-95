@@ -5,7 +5,7 @@
 #include <util.h>
 
 #define STACK_SIZE (16 * 4096)
-#define DEFAULT_TIME_SLICE 10
+#define DEFAULT_TIME_SLICE 2
 
 volatile bool scheduler_tick = false;
 
@@ -278,7 +278,5 @@ void test_scheduler(void) {
                      current ? current->pid : -1, counter++);
         
         for (volatile int i = 0; i < 1000000; i++);
-        
-        yield();
     }
 }

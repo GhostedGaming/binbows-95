@@ -67,5 +67,6 @@ void init_keyboard(void);
 void keyboard_handler(struct interrupt_registers *regs);
 void enable_keyboard_irq(void);
 char get_character(uint8_t key);
+void handle_key_press(uint8_t key);
 
 #endif

@@ -76,6 +76,8 @@ void cmd_pause(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
 
+void shell_process(void);
+
 extern const shell_command_t commands[];
 
 #endif

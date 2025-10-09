@@ -19,6 +19,7 @@
 #include <serial.h>
 #include <timer.h>
 #include <enable_sse.h>
+#include <scheduler.h>
 #include <shell.h>
 #include <stdint.h>
 #include <stdbool.h>
