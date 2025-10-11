@@ -56,6 +56,10 @@ void gdt_load(void) {
     write_serial("Complete\n");
 }
 
+void jump_to_ring3() {
+    
+}
+
 void gdt_init(void) {
     gdt_pointer.limit = (sizeof(struct gdt_entry) * GDT_ENTRIES) - 1;
     gdt_pointer.base = (uint64_t)&gdt;

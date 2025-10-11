@@ -34,6 +34,11 @@ volatile struct limine_bootloader_info_request bootloader_request = {
     .revision = 0
 };
 
+__attribute__((used, section(".limine_requests")))
+volatile struct limine_executable_address_request kernel_address_request = {
+    .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST,
+    .revision = 0
+};
 
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER

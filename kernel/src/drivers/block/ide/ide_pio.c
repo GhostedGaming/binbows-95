@@ -4,6 +4,12 @@
  * LOW-LEVEL PORT I/O
  * ============================================================================ */
 
+void ide_delay(uint8_t channel) {
+    for (int i = 0; i < 4; i++) {
+        ide_read(channel, ATA_REG_ALTSTATUS);
+    }
+}
+
 uint8_t ide_read(uint8_t channel, uint8_t reg) {
     if (reg > 0x07 && reg < 0x0C)
         ide_write(channel, ATA_REG_CONTROL, channels[channel].nIEN | 0x02);

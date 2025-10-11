@@ -378,8 +378,6 @@ char *input(char received) {
 
 void shell_process(void) {
     while (1) {
-        //shell_update_cursor();
-        
         if (received_key) {
             uint8_t key = received_key;
             received_key = 0;

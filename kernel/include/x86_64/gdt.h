@@ -1,13 +1,11 @@
 #ifndef GDT_H
 #define GDT_H
 
+// GDT structure
 struct gdt_entry {
-	/* Limits */
 	unsigned short limit_low;
-	/* Segment address */
 	unsigned short base_low;
 	unsigned char base_middle;
-	/* Access modes */
 	unsigned char access;
 	unsigned char granularity;
 	unsigned char base_high;
@@ -18,7 +16,7 @@ struct gdt_ptr {
     uint64_t base;
 } __attribute__((packed));
 
-// TSS structure for x86_64
+// TSS structure
 struct tss {
     uint32_t reserved0;
     uint64_t rsp0;

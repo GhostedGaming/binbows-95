@@ -5,7 +5,7 @@
 #include <util.h>
 
 #define STACK_SIZE (16 * 4096)
-#define DEFAULT_TIME_SLICE 2
+#define DEFAULT_TIME_SLICE 3
 
 volatile bool scheduler_tick = false;
 
@@ -74,7 +74,7 @@ void scheduler_init(void) {
     scheduler.processes[0].cpu_time_used = 0;
     scheduler.processes[0].stack_base = stack_base;
     scheduler.processes[0].entry_point = NULL;
-    scheduler.processes[0].stack_ptr = (uint64_t*)((uint8_t*)stack_base + STACK_SIZE / 2);
+    scheduler.processes[0].stack_ptr = (uint64_t*)((uint8_t*)stack_base + STACK_SIZE);
 
     scheduler.process_count = 1;
     initialized = true;
@@ -150,6 +150,7 @@ void terminate_process(uint32_t pid) {
                 scheduler.current_process--;
             }
 
+            serial_printf("[SCHEDULER] Terminated process PID=%d\n", pid);
             return;
         }
     }
@@ -223,16 +224,23 @@ void change_process(void) {
     
     if (current_proc->time_slice > 0) {
         current_proc->time_slice--;
+        current_proc->cpu_time_used++;
     }
     
-    if (current_proc->time_slice > 0) {
+    if (current_proc->time_slice > 0 && current_proc->state == PROCESS_RUNNING) {
         asm volatile("sti");
         return;
     }
 
     int next_idx = find_next_process();
 
-    if (next_idx == -1 || next_idx == scheduler.current_process) {
+    if (next_idx == -1) {
+        current_proc->time_slice = DEFAULT_TIME_SLICE;
+        asm volatile("sti");
+        return;
+    }
+
+    if (next_idx == scheduler.current_process) {
         current_proc->time_slice = DEFAULT_TIME_SLICE;
         asm volatile("sti");
         return;
@@ -240,8 +248,8 @@ void change_process(void) {
 
     process_t* next_proc = &scheduler.processes[next_idx];
 
-    serial_printf("[SCHEDULER] Context switch: PID %d -> PID %d\n",
-                  current_proc->pid, next_proc->pid);
+    //serial_printf("[SCHEDULER] Context switch: PID %d -> PID %d\n",
+    //              current_proc->pid, next_proc->pid);
 
     if (current_proc->state == PROCESS_RUNNING) {
         current_proc->state = PROCESS_READY;
@@ -253,29 +261,30 @@ void change_process(void) {
     
     scheduler.current_process = next_idx;
 
-    context_switch(&current_proc->stack_ptr, &next_proc->stack_ptr);
-
     asm volatile("sti");
+
+    context_switch(&current_proc->stack_ptr, &next_proc->stack_ptr);
 }
 
 void yield(void) {
     process_t* current = get_current_process();
     if (current) {
-        serial_printf("[SCHEDULER] Process PID=%d yielding\n", current->pid);
+        //serial_printf("[SCHEDULER] Process PID=%d yielding\n", current->pid);
+        current->time_slice = 0;
     }
     change_process();
 }
 
 void test_scheduler(void) {
-    serial_printf("[TEST] Process started! Getting current process...\n");
+    //serial_printf("[TEST] Process started! Getting current process...\n");
     process_t* current = get_current_process();
-    serial_printf("[TEST] Current process retrieved: PID=%d\n", current ? current->pid : -1);
+    //serial_printf("[TEST] Current process retrieved: PID=%d\n", current ? current->pid : -1);
     
     int counter = 0;
     while (1) {
         current = get_current_process();
-        serial_printf("[TEST] PID=%d running (iteration %d)\n", 
-                     current ? current->pid : -1, counter++);
+        //serial_printf("[TEST] PID=%d running (iteration %d)\n", 
+        //             current ? current->pid : -1, counter++);
         
         for (volatile int i = 0; i < 1000000; i++);
     }
