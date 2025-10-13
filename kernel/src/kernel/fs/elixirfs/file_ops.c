@@ -1,7 +1,8 @@
 #include <elixir.h>
 #include <mem.h>
-#include <ide.h>
+#include <sata.h>
 #include <util.h>
+#include <serial.h>
 
 static uint32_t hash_name(const char *name) {
     uint32_t hash = hash_string(name);
@@ -48,7 +49,7 @@ int new_entry(struct file_table* ft, struct file_entry* fe) {
 
     uint32_t hash = hash_name(fe->name);
 
-    for (int i = 0; i < ft->max_entries; i++) {
+    for (uint32_t i = 0; i < ft->max_entries; i++) {
         uint32_t index = (hash + i) % ft->max_entries;
         struct file_entry* slot = &ft->entries[index];
 
@@ -72,7 +73,7 @@ struct file_entry* find_file_entry(struct file_table* ft, const char* name) {
     uint32_t hash = hash_name(name);
     serial_printf("find_file_entry: Hash = %u\n", hash);
     
-    for (int i = 0; i < ft->max_entries; i++) {
+    for (uint32_t i = 0; i < ft->max_entries; i++) {
         uint32_t index = (hash + i) % ft->max_entries;
         struct file_entry* fe = &ft->entries[index];
         
@@ -93,7 +94,7 @@ struct file_entry* find_file_entry(struct file_table* ft, const char* name) {
     return NULL;
 }
 
-struct file_table* load_file_table(uint8_t drive_num) {
+struct file_table* load_file_table(HBA_PORT *port) {
     struct file_table* ft = kmalloc(sizeof(struct file_table));
 
     if (!ft) {
@@ -102,7 +103,7 @@ struct file_table* load_file_table(uint8_t drive_num) {
 
     uint64_t file_table_sectors = (sizeof(struct file_table) + 511) / 512;
 
-    if (ide_read_sectors(drive_num, file_table_sectors, 8, ft) != 0) {
+    if (!read_sectors(port, 8, 0, file_table_sectors, ft)) {
         kfree(ft);
         return NULL;
     }
@@ -115,17 +116,21 @@ struct file_table* load_file_table(uint8_t drive_num) {
     return ft;
 }
 
-int save_file_table(uint8_t drive_num, struct file_table* ft) {
+int save_file_table(HBA_PORT *port, struct file_table* ft) {
     if (!ft) {
         return -1;
     }
 
     uint64_t file_table_sectors = (sizeof(struct file_table) + 511) / 512;
 
-    return ide_write_sectors(drive_num, file_table_sectors, 8, ft);
+    if (!write_sectors(port, 8, 0, file_table_sectors, ft)) {
+        return -1;
+    }
+
+    return 0;
 }
 
-int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
+int create_file(char* name, HBA_PORT *port, void* data, size_t data_size) {
     serial_printf("create_file: Starting file creation for '%s'\n", name);
     
     uint16_t block_size = 4096;
@@ -156,7 +161,7 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
     }
 
     serial_printf("create_file: Reading superblock from disk\n");
-    if (ide_read_sectors(drive_num, sectors_per_block, 0, sb) != 0) {
+    if (!read_sectors(port, 0, 0, sectors_per_block, sb)) {
         serial_printf("create_file: Failed to read superblock\n");
         kfree(sb);
         kfree(fe);
@@ -180,7 +185,8 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
 
     for (uint64_t i = search_start; i < search_end; i++) {
         uint16_t buffer[256] = {0};
-        if (ide_read_sectors(drive_num, sectors_per_block, i * sectors_per_block, buffer) != 0) {
+        uint64_t sector = i * sectors_per_block;
+        if (!read_sectors(port, (uint32_t)(sector & 0xFFFFFFFF), (uint32_t)(sector >> 32), sectors_per_block, buffer)) {
             continue;
         }
 
@@ -213,9 +219,9 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
                   fe->size_bytes, fe->size_blocks);
     
     uint32_t sectors_needed = fe->size_blocks * sectors_per_block;
+    uint64_t start_sector = fe->start_block * sectors_per_block;
 
-    if (ide_write_sectors(drive_num, sectors_needed, 
-                          fe->start_block * sectors_per_block, data) != 0) {
+    if (!write_sectors(port, (uint32_t)(start_sector & 0xFFFFFFFF), (uint32_t)(start_sector >> 32), sectors_needed, data)) {
         serial_printf("create_file: Failed to write file data\n");
         kfree(sb);
         kfree(fe);
@@ -223,7 +229,7 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
     }
 
     serial_printf("create_file: Loading file table\n");
-    struct file_table* ft = load_file_table(drive_num);
+    struct file_table* ft = load_file_table(port);
     if (!ft) {
         serial_printf("create_file: Failed to load file table\n");
         kfree(sb);
@@ -242,7 +248,7 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
     }
 
     serial_printf("create_file: Saving file table\n");
-    if (save_file_table(drive_num, ft) != 0) {
+    if (save_file_table(port, ft) != 0) {
         serial_printf("create_file: Failed to save file table\n");
         kfree(ft);
         kfree(sb);
@@ -256,11 +262,11 @@ int create_file(char* name, uint8_t drive_num, void* data, size_t data_size) {
     return 0;
 }
 
-void* read_file(char* name, uint8_t drive_num, size_t* out_size) {
+void* read_file(char* name, HBA_PORT *port, size_t* out_size) {
     serial_printf("read_file: Starting file read for '%s'\n", name);
     
     serial_printf("read_file: Loading file table\n");
-    struct file_table* ft = load_file_table(drive_num);
+    struct file_table* ft = load_file_table(port);
     if (!ft) {
         serial_printf("read_file: Failed to load file table\n");
         if (out_size) *out_size = 0;
@@ -293,7 +299,7 @@ void* read_file(char* name, uint8_t drive_num, size_t* out_size) {
     
     serial_printf("read_file: Reading %u sectors from sector %llu\n", sectors_to_read, start_sector);
     
-    if (ide_read_sectors(drive_num, sectors_to_read, start_sector, file_data) != 0) {
+    if (!read_sectors(port, (uint32_t)(start_sector & 0xFFFFFFFF), (uint32_t)(start_sector >> 32), sectors_to_read, file_data)) {
         serial_printf("read_file: Failed to read file data\n");
         kfree(file_data);
         kfree(ft);
