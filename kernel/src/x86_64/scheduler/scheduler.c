@@ -173,9 +173,6 @@ int create_process(void (*entry_point)(void), uint32_t priority) {
     scheduler.processes[idx].entry_point = entry_point;
     scheduler.processes[idx].stack_base = stack_base;
 
-    // Decide whether this is a kernel or user process. Kernel code lives in
-    // the higher-half canonical addresses (sign bit set). If entry_point has
-    // the top bit set, treat it as a kernel process and reuse the current CR3.
     uint64_t entry_addr = (uint64_t)(uintptr_t)entry_point;
     if ((entry_addr & (1ULL << 63)) != 0) {
         // Kernel process: use current CR3 and mark as kernel
@@ -397,18 +394,18 @@ void change_process(void) {
 
     uint64_t cur_cr3;
     asm volatile ("mov %%cr3, %0" : "=r"(cur_cr3));
-    serial_printf("[SCHEDULER] Switch PID %d -> %d (is_user=%d) pml4=0x%lx entry=%p stackptr=%p CR3=0x%lx\n",
-                  current_proc->pid, next_proc->pid, next_proc->is_user,
-                  next_proc->pml4_phys, next_proc->entry_point, next_proc->stack_ptr, cur_cr3);
+    //serial_printf("[SCHEDULER] Switch PID %d -> %d (is_user=%d) pml4=0x%lx entry=%p stackptr=%p CR3=0x%lx\n",
+    //              current_proc->pid, next_proc->pid, next_proc->is_user,
+    //              next_proc->pml4_phys, next_proc->entry_point, next_proc->stack_ptr, cur_cr3);
 
     /* Dump first few qwords at the new stack pointer for debugging */
-    if (next_proc->stack_ptr) {
-        serial_printf("[SCHEDULER] next stack contents: ");
-        for (int i = 0; i < 20; i++) {
-            serial_printf("%016lx ", (uint64_t)next_proc->stack_ptr[i]);
-        }
-        serial_printf("\n");
-    }
+    //if (next_proc->stack_ptr) {
+    //    serial_printf("[SCHEDULER] next stack contents: ");
+    //    for (int i = 0; i < 20; i++) {
+    //        serial_printf("%016lx ", (uint64_t)next_proc->stack_ptr[i]);
+    //    }
+    //    serial_printf("\n");
+    //}
 
     uint64_t cr3_arg = next_proc->pml4_phys;
     if (next_proc->is_user) cr3_arg |= 1ULL;
@@ -418,7 +415,7 @@ void change_process(void) {
 void yield(void) {
     process_t* current = get_current_process();
     if (current) {
-        serial_printf("[SCHEDULER] Process PID=%d yielding\n", current->pid);
+    //    serial_printf("[SCHEDULER] Process PID=%d yielding\n", current->pid);
         if (current->state == PROCESS_RUNNING) current->state = PROCESS_READY;
         current->time_slice = 0;
     }

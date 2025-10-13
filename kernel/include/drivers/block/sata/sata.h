@@ -2,6 +2,7 @@
 #define SATA_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define	SATA_SIG_ATA	0x00000101	// SATA drive
 #define	SATA_SIG_ATAPI	0xEB140101	// SATAPI drive
@@ -16,6 +17,21 @@
 
 #define HBA_PORT_IPM_ACTIVE 1
 #define HBA_PORT_DET_PRESENT 3
+
+#define	AHCI_BASE	0x400000	// 4M
+
+#define HBA_PxCMD_ST    0x0001
+#define HBA_PxCMD_FRE   0x0010
+#define HBA_PxCMD_FR    0x4000
+#define HBA_PxCMD_CR    0x8000
+#define HBA_PxIS_TFES   (1 << 30)
+
+#define ATA_CMD_IDENTIFY 0xEC
+#define ATA_DEV_BUSY 0x80
+#define ATA_DEV_DRQ 0x08
+
+#define ATA_CMD_READ_DMA_EX 0x25
+#define ATA_CMD_WRITE_DMA_EX 0x35
 
 typedef enum {
     FIS_TYPE_REG_H2D	= 0x27,	// Register FIS - host to device
@@ -318,5 +334,11 @@ typedef struct tagHBA_CMD_TBL {
 	// 0x80
 	HBA_PRDT_ENTRY	prdt_entry[1];	// Physical region descriptor table entries, 0 ~ 65535
 } HBA_CMD_TBL;
+
+extern HBA_MEM *abar;
+
+int sata_init(void);
+bool read_sectors(HBA_PORT *port, uint64_t startl, uint64_t starth, uint32_t count, void *buf);
+bool write_sectors(HBA_PORT *port, uint64_t startl, uint64_t starth, uint32_t count, const void *buf);
 
 #endif // SATA_H

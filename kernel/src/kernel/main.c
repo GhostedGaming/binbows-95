@@ -18,7 +18,6 @@ void kernel_main(void) {
 
     gdt_init();
     gdt_load();
-    serial_printf("GDT loaded\n");
 
     idt_init();
     install_exceptions();
@@ -35,19 +34,31 @@ void kernel_main(void) {
     init_fb();
 
     ide_initialize();
+    sata_init();
 
-    draw_text_center_screen("Hello world!", rgb_to_color(255, 255, 255));
+    const char *msg = "Hello, SATA sector!";
+    uint8_t write_buf[512] = {0};
+    uint8_t read_buf[512] = {0};
+
+    for (int i = 0; i < 512 && msg[i]; i++) {
+        write_buf[i] = msg[i];
+    }
+
+    if (write_sectors(&abar->ports[0], 0, 0, 1, write_buf)) {
+        serial_printf("Successfully wrote to sector 0\n");
+    } else {
+        serial_printf("Failed to write to sector 0\n");
+    }
+
+    if (read_sectors(&abar->ports[0], 0, 0, 1, read_buf)) {
+        serial_printf("Read from sector 0: %s\n", read_buf);
+    } else {
+        serial_printf("Failed to read from sector 0\n");
+    }
 
     create_process(test_scheduler, 1);
     create_process(shell_process, 10);
-    extern void keyboard_process(void);
-    int kpid = create_process(keyboard_process, 5);
-    if (kpid > 0) {
-        keyboard_process_pid = (uint32_t)kpid;
-    }
     shell_init();
-
-    serial_printf("System initialized!\n");
 
     asm volatile ("sti");
 

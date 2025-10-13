@@ -1,6 +1,7 @@
 #include <util.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 int strlen(const char *str) {
     int len = 0;
@@ -156,6 +157,232 @@ uint32_t hash_string(const char *str) {
         hash *= 0x01000193;
     }
     return hash;
+}
+
+static void reverse_string(char *str, int length) {
+    int start = 0;
+    int end = length - 1;
+    while (start < end) {
+        char temp = str[start];
+        str[start] = str[end];
+        str[end] = temp;
+        start++;
+        end--;
+    }
+}
+
+static int ulonglong_to_str(unsigned long long num, char *str, int base) {
+    int i = 0;
+    
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return i;
+    }
+    
+    while (num != 0) {
+        unsigned long long rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+    
+    str[i] = '\0';
+    reverse_string(str, i);
+    
+    return i;
+}
+
+static int ulong_to_str(unsigned long num, char *str, int base) {
+    int i = 0;
+    
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return i;
+    }
+    
+    while (num != 0) {
+        unsigned long rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+    
+    str[i] = '\0';
+    reverse_string(str, i);
+    
+    return i;
+}
+
+static int int_to_str(int num, char *str, int base) {
+    int i = 0;
+    int is_negative = 0;
+    
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return i;
+    }
+    
+    if (num < 0 && base == 10) {
+        is_negative = 1;
+        num = -num;
+    }
+    
+    while (num != 0) {
+        int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+    
+    if (is_negative) {
+        str[i++] = '-';
+    }
+    
+    str[i] = '\0';
+    reverse_string(str, i);
+    
+    return i;
+}
+
+static int uint_to_str(unsigned int num, char *str, int base) {
+    int i = 0;
+    
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return i;
+    }
+    
+    while (num != 0) {
+        unsigned int rem = num % base;
+        str[i++] = (rem > 9) ? (rem - 10) + 'a' : rem + '0';
+        num = num / base;
+    }
+    
+    str[i] = '\0';
+    reverse_string(str, i);
+    
+    return i;
+}
+
+int vsnprintf(char *buf, size_t size, const char *format, va_list args) {
+    size_t pos = 0;
+    
+    if (!buf || !format || size == 0) {
+        return 0;
+    }
+    
+    while (*format && pos < size - 1) {
+        if (*format == '%') {
+            format++;
+            
+            if (*format == '\0') break;
+            
+            // Check for length modifiers 'l' and 'll'
+            int is_long = 0;
+            int is_longlong = 0;
+            if (*format == 'l') {
+                is_long = 1;
+                format++;
+                if (*format == '\0') break;
+                if (*format == 'l') {
+                    is_longlong = 1;
+                    is_long = 0;
+                    format++;
+                    if (*format == '\0') break;
+                }
+            }
+            
+            if (*format == '%') {
+                buf[pos++] = '%';
+            } else if (*format == 's') {
+                char *s = va_arg(args, char*);
+                if (s == NULL) s = "(null)";
+                while (*s && pos < size - 1) {
+                    buf[pos++] = *s++;
+                }
+            } else if (*format == 'c') {
+                buf[pos++] = (char)va_arg(args, int);
+            } else if (*format == 'd' || *format == 'i') {
+                if (is_long) {
+                    long val = va_arg(args, long);
+                    char temp[32];
+                    int len = int_to_str((int)val, temp, 10);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                } else {
+                    int val = va_arg(args, int);
+                    char temp[32];
+                    int len = int_to_str(val, temp, 10);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                }
+            } else if (*format == 'u') {
+                if (is_longlong) {
+                    unsigned long long val = va_arg(args, unsigned long long);
+                    char temp[32];
+                    int len = ulonglong_to_str(val, temp, 10);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                } else if (is_long) {
+                    unsigned long val = va_arg(args, unsigned long);
+                    char temp[32];
+                    int len = ulong_to_str(val, temp, 10);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                } else {
+                    unsigned int val = va_arg(args, unsigned int);
+                    char temp[32];
+                    int len = uint_to_str(val, temp, 10);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                }
+            } else if (*format == 'x') {
+                if (is_longlong) {
+                    unsigned long long val = va_arg(args, unsigned long long);
+                    char temp[32];
+                    int len = ulonglong_to_str(val, temp, 16);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                } else if (is_long) {
+                    unsigned long val = va_arg(args, unsigned long);
+                    char temp[32];
+                    int len = ulong_to_str(val, temp, 16);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                } else {
+                    unsigned int val = va_arg(args, unsigned int);
+                    char temp[32];
+                    int len = uint_to_str(val, temp, 16);
+                    for (int i = 0; i < len && pos < size - 1; i++) {
+                        buf[pos++] = temp[i];
+                    }
+                }
+            } else if (*format == 'p') {
+                buf[pos++] = '0';
+                buf[pos++] = 'x';
+                unsigned long val = (unsigned long)va_arg(args, void*);
+                char temp[32];
+                int len = ulong_to_str(val, temp, 16);
+                for (int i = 0; i < len && pos < size - 1; i++) {
+                    buf[pos++] = temp[i];
+                }
+            }
+            format++;
+        } else {
+            buf[pos++] = *format++;
+        }
+    }
+    
+    buf[pos] = '\0';
+    return (int)pos;
 }
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n) {

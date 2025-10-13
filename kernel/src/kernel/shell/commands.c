@@ -65,7 +65,7 @@ void cmd_kill(int argc, char args[][MAX_ARG_LENGTH]) {
 
 void cmd_help(int argc, char args[][MAX_ARG_LENGTH]) {
     (void)argc; (void)args;
-    shell_print("Available commands:\n");
+    shell_printf("Available commands:\n");
     for (const shell_command_t *cmd = commands; cmd->name; cmd++) {
         shell_print("  ");
         shell_print(cmd->usage);
@@ -109,18 +109,23 @@ void cmd_echo(int argc, char args[][MAX_ARG_LENGTH]) {
 void cmd_history(int argc, char args[][MAX_ARG_LENGTH]) {
     (void)argc; (void)args;
     shell_print("Command history:\n");
-    int count = 0;
-    for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
-        int idx = (shell_state.history_index + i) % MAX_HISTORY_ENTRIES;
+    
+    uint32_t num_entries = (shell_state.history_index > MAX_HISTORY_ENTRIES) ? MAX_HISTORY_ENTRIES : shell_state.history_index;
+    uint32_t start_idx = (shell_state.history_index > MAX_HISTORY_ENTRIES) ? shell_state.history_index % MAX_HISTORY_ENTRIES : 0;
+    
+    if (num_entries == 0) {
+        shell_print("  (no commands in history)\n");
+        return;
+    }
+    
+    for (uint32_t i = 0; i < num_entries; i++) {
+        int idx = (start_idx + i) % MAX_HISTORY_ENTRIES;
         if (strlen(shell_state.history[idx]) > 0) {
             shell_print("  ");
+            shell_printf("%u: ", shell_state.history_index - num_entries + i + 1);
             shell_print(shell_state.history[idx]);
             shell_print("\n");
-            count++;
         }
-    }
-    if (count == 0) {
-        shell_print("  (no commands in history)\n");
     }
 }
 

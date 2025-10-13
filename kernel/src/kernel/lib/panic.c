@@ -12,7 +12,8 @@ void panic_impl(const char *file, int line, const char *func, const char *fmt, .
     
     clear_screen();
 
-    draw_text_center_screen("\n***KERNEL PANIC***\n", rgb_to_color(255, 255, 255));
+    fb_printf("Kernel Panic!\n", rgb_to_color(255, 0, 0));
+    fb_printf("Location: %s:%d in %s()\n", file, line, func);
 
     serial_printf("\n*** KERNEL PANIC ***\n");
     serial_printf("Location: %s:%d in %s()\n", file, line, func);

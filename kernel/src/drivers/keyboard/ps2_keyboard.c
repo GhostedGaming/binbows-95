@@ -8,7 +8,6 @@
 
 static modifier_state_t modifiers = {0};
 
-/* Expose keyboard process pid so other code can reference it */
 uint32_t keyboard_process_pid = 0;
 bool keyboard_enabled = false;
 
@@ -26,7 +25,6 @@ static const uint8_t scancode_to_key[128] = {
 static const char shift_map[] = "!@#$%^&*()_+{}|:\"~<>?";
 static const char normal_map[] = "1234567890-=[]\\;'`,./";
 
-/* Simple kernel keyboard circular buffer */
 #define KBD_BUF_SIZE 256
 static char kbd_buf[KBD_BUF_SIZE];
 static size_t kbd_head = 0;
@@ -39,46 +37,45 @@ void init_keyboard(void) {
         inb(KB_DATA_PORT);
     }
     
-    while (inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL);
     outb(KB_COMMAND_PORT, KB_ENABLE_KEYBOARD);
+    
     while (inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL);
     
     serial_printf("[KBD] Controller enabled, attempting to enable scanning\n");
 
-    /* Send Enable Scanning (0xF4) to the keyboard device and wait for ACK (0xFA).
-       Retry a few times in case the device is slow or busy. */
-    const int max_retries = 5;
+    const int max_retries = 10;
     int attempt;
     bool got_ack = false;
+    
     for (attempt = 0; attempt < max_retries; attempt++) {
-        /* Wait until input buffer empty */
         int timeout = 100000;
         while ((inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL) && --timeout > 0);
+        
         if (timeout <= 0) {
-            serial_printf("[KBD] timeout waiting input empty before send (attempt %d)\n", attempt);
+            serial_printf("[KBD] timeout waiting input empty (attempt %d)\n", attempt);
+            for (volatile int i = 0; i < 10000; i++);
             continue;
         }
 
-        outb(KB_DATA_PORT, 0xF4); /* enable scanning */
-
-        /* Wait for output or timeout */
+        outb(KB_DATA_PORT, 0xF4);
+        
         timeout = 100000;
         while (!(inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL) && --timeout > 0);
+        
         if (timeout <= 0) {
             serial_printf("[KBD] timeout waiting for ACK (attempt %d)\n", attempt);
+            for (volatile int i = 0; i < 10000; i++);
             continue;
         }
 
         uint8_t resp = inb(KB_DATA_PORT);
         serial_printf("[KBD] response 0x%02x to enable-scanning\n", resp);
-        if (resp == 0xFA) { /* ACK */
+        
+        if (resp == 0xFA) {
             got_ack = true;
             break;
-        } else if (resp == 0xFE) { /* Resend requested */
+        } else if (resp == 0xFE) {
             serial_printf("[KBD] resend requested\n");
-            continue;
-        } else {
-            /* Unexpected response; try again */
             continue;
         }
     }
@@ -88,7 +85,7 @@ void init_keyboard(void) {
         keyboard_enabled = true;
         serial_printf("[KBD] Keyboard enabled (ACK received)\n");
     } else {
-        serial_printf("[KBD] Failed to enable keyboard after %d attempts; keyboard_enabled=0\n", max_retries);
+        serial_printf("[KBD] Failed to enable keyboard after %d attempts\n", max_retries);
         keyboard_enabled = false;
     }
 }
@@ -239,11 +236,7 @@ void keyboard_handler(struct interrupt_registers *regs) {
     uint8_t key = scancode_to_key[scancode];
     
     if (key_pressed) {
-        received_key = key;
-        char c = get_character(key);
-        if (c) {
-            kbd_enqueue_char(c);
-        }
+        handle_key_press(key);
     } else {
         handle_key_release(key);
     }
@@ -262,15 +255,13 @@ void disable_keyboard_irq(void) {
     mask |= (1 << 1);
     outb(PIC1_DATA_PORT, mask);
     keyboard_enabled = false;
-    /* also clear buffer and received key */
-    kbd_tail = kbd_head; /* empty buffer */
+    kbd_tail = kbd_head;
     received_key = 0;
 }
 
 void kbd_enqueue_char(char c) {
     size_t next = (kbd_head + 1) % KBD_BUF_SIZE;
     if (next == kbd_tail) {
-        // buffer full, drop
         return;
     }
     kbd_buf[kbd_head] = c;

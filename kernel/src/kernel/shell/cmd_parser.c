@@ -20,8 +20,6 @@ void parse_args(const char *command, char args[][MAX_ARG_LENGTH], int *argc) {
 
 void parse_command(void) {
     if (!shell_state.command_buffer[0]) {
-        shell_print_prompt();
-        shell_redraw_input();
         return;
     }
     
@@ -47,7 +45,7 @@ void parse_command(void) {
         }
     } else {
         shell_error("Unknown command");
-        shell_print("Type 'help' for available commands.\n");
+        shell_printf("Type 'help' for available commands.\n");
     }
     
     shell_state.command_buffer[0] = '\0';

@@ -221,3 +221,15 @@ void check_all_buses(void) {
 pci_device* pci_find_ahci_controller(void) {
     return pci_find_class_prog_if(0x01, 0x06, 0x01);
 }
+
+uint16_t pci_read_word(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+    return pci_config_read_word(bus, slot, func, offset);
+}
+
+uint8_t pci_read_byte(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+    return pci_config_read_byte(bus, slot, func, offset);
+}
+
+uint32_t pci_read_dword(uint8_t bus, uint8_t slot, uint8_t func, uint8_t offset) {
+    return pci_config_read_dword(bus, slot, func, offset);
+}

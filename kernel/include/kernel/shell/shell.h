@@ -27,7 +27,10 @@ typedef struct {
     int cursor_pos;
     int cursor_blink_counter;
     int cursor_visible;
+    int prompt_x;
+    int prompt_y;
 } shell_state_t;
+
 
 extern volatile uint8_t received_key;
 extern shell_state_t shell_state;
