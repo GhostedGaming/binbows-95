@@ -55,7 +55,6 @@ uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out
     uint32_t root_dir_sectors = ((bpb.root_entry_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
     uint32_t fat_size = bpb.fat_size_16;
     uint32_t root_dir_lba = bpb.reserved_sector_count + (bpb.num_fats * fat_size);
-    uint32_t data_start_lba = root_dir_lba + root_dir_sectors;
     
     char fat_filename[12];  // 11 + null terminator
     format_filename_for_compare(filename, fat_filename);
@@ -76,12 +75,12 @@ uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out
         for (uint32_t j = 0; j < 512; j += 32) {
             fat12_dir_entry_t *entry = (fat12_dir_entry_t *)&sector[j];
 
-            if (entry->name[0] == 0x00) {
+            if ((uint8_t)entry->name[0] == 0x00) {
                 serial_printf("End of directory reached\n");
                 return NULL;
             }
             
-            if (entry->name[0] == 0xE5) {
+            if ((uint8_t)entry->name[0] == 0xE5) {
                 continue;
             }
 
@@ -96,6 +95,7 @@ uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out
                 uint16_t cluster = entry->first_cluster_low;
                 uint32_t file_size = entry->file_size;
                 uint32_t cluster_size = bpb.bytes_per_sector * bpb.sectors_per_cluster;
+                uint32_t data_start_lba = root_dir_lba + root_dir_sectors;
 
                 // Allocate buffer for file contents using kernel allocator
                 uint8_t *buffer = (uint8_t*)kmalloc(file_size);
@@ -233,7 +233,6 @@ char *fat12_read_files(uint8_t drive) {
     uint32_t root_dir_sectors = ((bpb.root_entry_count * 32) + (bpb.bytes_per_sector - 1)) / bpb.bytes_per_sector;
     uint32_t fat_size = bpb.fat_size_16;
     uint32_t root_dir_lba = bpb.reserved_sector_count + (bpb.num_fats * fat_size);
-    uint32_t data_start_lba = root_dir_lba + root_dir_sectors;
     
     uint8_t sector[512];
     file_list[0] = '\0';

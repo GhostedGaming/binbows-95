@@ -1,5 +1,9 @@
 #include <fat32.h>
 
+bpb_t32 cached_bpb32;
+bool bpb_cached32 = false;
+uint8_t cached_drive32 = 0xFF;
+
 // Format a filename to 8.3 FAT format (FAT32 uses the same short name format)
 void fat32_format_filename(const char* filename, char* fat_name) {
     memset(fat_name, ' ', 11);

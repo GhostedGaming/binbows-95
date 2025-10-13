@@ -75,6 +75,10 @@ void cmd_lsf(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_pause(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]);
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_ps(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_kill(int argc, char args[][MAX_ARG_LENGTH]);
+void cmd_nice(int argc, char args[][MAX_ARG_LENGTH]);
+
 
 void shell_process(void);
 

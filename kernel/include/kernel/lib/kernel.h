@@ -21,6 +21,7 @@
 #include <enable_sse.h>
 #include <scheduler.h>
 #include <shell.h>
+#include <ps2_keyboard.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>

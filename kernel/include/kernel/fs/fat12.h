@@ -62,9 +62,9 @@ typedef struct {
 // FAT12 end-of-cluster marker
 #define FAT12_EOC 0xFF8
 
-static bpb_t12 cached_bpb12;
-static bool bpb_cached12 = false;
-static uint8_t cached_drive12 = 0xFF;
+extern bpb_t12 cached_bpb12;
+extern bool bpb_cached12;
+extern uint8_t cached_drive12;
 
 uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out);
 bool fat12_read_file_to_buffer(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out);

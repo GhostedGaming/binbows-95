@@ -66,9 +66,9 @@ typedef struct {
 #define FAT16_FREE_CLUSTER 0x0000
 
 // Global BPB cache to avoid repeated reads
-static bpb_t16 cached_bpb16;
-static bool bpb_cached16 = false;
-static uint8_t cached_drive16 = 0xFF;
+extern bpb_t16 cached_bpb16;
+extern bool bpb_cached16;
+extern uint8_t cached_drive16;
 
 // Function declarations
 void format_fat16(uint8_t drive);

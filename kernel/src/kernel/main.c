@@ -1,6 +1,4 @@
 #include <kernel.h>
-#include <scheduler.h>
-#include <shell.h>
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
@@ -11,6 +9,7 @@ void shell_process(void);
 void kernel_main(void) {
     if (!memmap_request.response) while (1) asm volatile ("hlt");
     if (!hhdm_request.response) while (1) asm volatile ("hlt");
+    if (!bootloader_request.response) while (1) asm volatile ("hlt");
 
     enable_sse();
     init_serial();
@@ -26,10 +25,11 @@ void kernel_main(void) {
 
     scheduler_init();
 
-    init_timer_irq();
-    init_keyboard_irq();
     idt_load();
     init_pic();
+
+    init_timer_irq();
+    init_keyboard_irq();
     init_timer();
 
     init_fb();
@@ -40,6 +40,11 @@ void kernel_main(void) {
 
     create_process(test_scheduler, 1);
     create_process(shell_process, 10);
+    extern void keyboard_process(void);
+    int kpid = create_process(keyboard_process, 5);
+    if (kpid > 0) {
+        keyboard_process_pid = (uint32_t)kpid;
+    }
     shell_init();
 
     serial_printf("System initialized!\n");

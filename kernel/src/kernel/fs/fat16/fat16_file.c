@@ -135,11 +135,11 @@ bool fat16_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
         for (uint32_t j = 0; j < 512; j += 32) {
             fat16_dir_entry_t *entry = (fat16_dir_entry_t *)&sector[j];
 
-            if (entry->name[0] == 0x00) {
+            if ((uint8_t)entry->name[0] == 0x00) {
                 return false; // End of directory
             }
 
-            if (entry->name[0] == 0xE5) {
+            if ((uint8_t)entry->name[0] == 0xE5) {
                 continue; // Deleted entry
             }
 

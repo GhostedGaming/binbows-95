@@ -13,6 +13,8 @@ uint8_t ide_buf[512];
  * ============================================================================ */
 
 static int ide_device_exists(uint8_t channel, uint8_t drive) {
+    if (channel > 1) return 0;
+    if (drive > 1) return 0;
     ide_write(channel, ATA_REG_HDDEVSEL, 0xA0 | (drive << 4));
     ide_delay(channel);
     
@@ -106,6 +108,6 @@ void ide_initialize(void) {
  * HELPER FUNCTIONS
  * ============================================================================ */
 uint64_t read_total_sectors(uint8_t drive_num) {
-    uint64_t total_sectors = ide_devices[drive_num].Size;
-    return total_sectors;
+    if (drive_num >= 4) return 0;
+    return ide_devices[drive_num].Size;
 }

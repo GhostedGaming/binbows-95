@@ -1,22 +1,22 @@
 #ifndef GDT_H
 #define GDT_H
 
-// GDT structure
+#include <stdint.h>
+
 struct gdt_entry {
-	unsigned short limit_low;
-	unsigned short base_low;
-	unsigned char base_middle;
-	unsigned char access;
-	unsigned char granularity;
-	unsigned char base_high;
+    uint16_t limit_low;
+    uint16_t base_low;
+    uint8_t base_middle;
+    uint8_t access;
+    uint8_t granularity;
+    uint8_t base_high;
 } __attribute__((packed));
 
 struct gdt_ptr {
-    unsigned short limit;
+    uint16_t limit;
     uint64_t base;
 } __attribute__((packed));
 
-// TSS structure
 struct tss {
     uint32_t reserved0;
     uint64_t rsp0;
@@ -37,5 +37,6 @@ struct tss {
 
 void gdt_init(void);
 void gdt_load(void);
+void jump_to_ring3(void);
 
 #endif

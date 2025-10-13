@@ -164,6 +164,26 @@ void shell_printf(const char *format, ...) {
                     else shell_print("(null)");
                     break;
                 }
+                case 'u':
+                case 'U': {
+                    unsigned int val = va_arg(args, unsigned int);
+                    char buffer[32];
+                    int len = 0;
+                    unsigned int temp = val;
+                    if (temp == 0) {
+                        shell_print("0");
+                        break;
+                    }
+                    while (temp > 0) {
+                        buffer[len++] = '0' + (temp % 10);
+                        temp /= 10;
+                    }
+                    for (int i = len - 1; i >= 0; i--) {
+                        char c[2] = {buffer[i], '\0'};
+                        shell_print(c);
+                    }
+                    break;
+                }
                 case 'c': {
                     char c = (char)va_arg(args, int);
                     char temp[2] = {c, '\0'};
@@ -312,7 +332,7 @@ void shell_cancel_input(void) {
 char wait_for_input(void) {
     received_key = 0;
     while (!received_key) {
-        asm volatile("hlt");
+        yield();
     }
     char result = get_character(received_key);
     received_key = 0;

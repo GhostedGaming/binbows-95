@@ -1,5 +1,9 @@
 #include <fat16.h>
 
+bpb_t16 cached_bpb16;
+bool bpb_cached16 = false;
+uint8_t cached_drive16 = 0xFF;
+
 void fat16_format_filename16(const char* filename, char* fat_name) {
     memset(fat_name, ' ', 11);
     fat_name[11] = '\0';  // Null terminate for debugging

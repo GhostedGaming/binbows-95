@@ -111,8 +111,8 @@ bool fat32_read_file(uint8_t drive, const char *filename, uint8_t *buffer, uint3
         for (uint32_t j = 0; j < 512; j += 32) {
             fat32_dir_entry_t *entry = (fat32_dir_entry_t *)&sector[j];
 
-            if (entry->name[0] == 0x00) return false;
-            if (entry->name[0] == 0xE5) continue;
+            if ((uint8_t)entry->name[0] == 0x00) return false;
+            if ((uint8_t)entry->name[0] == 0xE5) continue;
             if ((entry->attr & ATTR_DIRECTORY) || (entry->attr & ATTR_VOLUME_ID)) continue;
             if (memcmp(entry->name, fat_filename, 11) != 0) continue;
 

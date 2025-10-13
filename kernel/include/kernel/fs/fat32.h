@@ -75,9 +75,9 @@ typedef struct {
 #define FAT32_FREE_CLUSTER 0x00000000
 
 // Global BPB cache
-static bpb_t32 cached_bpb32;
-static bool bpb_cached32 = false;
-static uint8_t cached_drive32 = 0xFF;
+extern bpb_t32 cached_bpb32;
+extern bool bpb_cached32;
+extern uint8_t cached_drive32;
 
 // Function declarations
 void format_fat32(uint8_t drive);

@@ -21,6 +21,9 @@ typedef struct {
     uint32_t priority;
     uint64_t* stack_ptr;
     uint64_t* stack_base;
+    uint64_t pml4_phys; // physical address of this process's PML4
+    bool is_user;
+    uint64_t user_stack_vaddr;
     uint32_t time_slice;
     uint32_t cpu_time_used;
     void (*entry_point)(void);
@@ -34,7 +37,7 @@ typedef struct {
 } scheduler_t;
 
 void scheduler_init(void);
-void context_switch(uint64_t** save_rsp_location, uint64_t** load_rsp_location);
+void context_switch(uint64_t** save_rsp_location, uint64_t** load_rsp_location, uint64_t usermode);
 int create_process(void (*entry_point)(void), uint32_t priority);
 void terminate_process(uint32_t pid);
 void change_process(void);
@@ -43,6 +46,10 @@ void block_process(uint32_t pid);
 void unblock_process(uint32_t pid);
 process_t* get_current_process(void);
 process_t* get_process_by_pid(uint32_t pid);
+
+/* New helpers to enumerate processes from user commands */
+uint32_t get_process_count(void);
+process_t* get_process_at(uint32_t index);
 
 uint64_t* allocate_process_stack(void);
 void free_process_stack(uint64_t* stack_base);

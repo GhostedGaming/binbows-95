@@ -4,6 +4,7 @@
 #include <util.h>
 #include <framebuffer.h>
 #include <elixir.h>
+#include <scheduler.h>
 
 extern struct ide_device ide_devices[4];
 
@@ -21,10 +22,49 @@ const shell_command_t commands[] = {
     {"mkfile", cmd_mkfile, "Create file", "mkfile <drive_number> <filename>"},
     {"cat", cmd_cat, "Display file contents", "cat <drive_number> <filename>"},
     {"pause", cmd_pause, "Pause until input", "pause"},
+    {"ps", cmd_ps, "List processes", "ps"},
+    {"kill", cmd_kill, "Terminate process by PID", "kill <pid>"},
+    {"nice", cmd_nice, "Change process priority", "nice <pid> <priority>"},
     {NULL, NULL, NULL, NULL}
 };
 
+void cmd_ps(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
+    shell_print("PID\tState\tPriority\tEntry\n");
+    uint32_t count = get_process_count();
+    for (uint32_t i = 0; i < count; i++) {
+        process_t *p = get_process_at(i);
+        if (!p) continue;
+        const char *state = "?";
+        switch (p->state) {
+            case PROCESS_READY: state = "READY"; break;
+            case PROCESS_RUNNING: state = "RUN"; break;
+            case PROCESS_BLOCKED: state = "BLKD"; break;
+            case PROCESS_TERMINATED: state = "TERM"; break;
+        }
+        shell_printf("%u\t%s\t%u\t%p\n", p->pid, state, p->priority, p->entry_point);
+    }
+}
+
+void cmd_kill(int argc, char args[][MAX_ARG_LENGTH]) {
+    if (argc < 2) {
+        shell_error("kill: missing pid");
+        return;
+    }
+    uint32_t pid = 0;
+    for (char *p = args[1]; *p; p++) {
+        if (*p < '0' || *p > '9') { shell_error("kill: invalid pid"); return; }
+        pid = pid * 10 + (*p - '0');
+    }
+    if (pid == 0) {
+        shell_error("kill: cannot kill kernel (pid 0)");
+        return;
+    }
+    terminate_process(pid);
+}
+
 void cmd_help(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     shell_print("Available commands:\n");
     for (const shell_command_t *cmd = commands; cmd->name; cmd++) {
         shell_print("  ");
@@ -48,6 +88,7 @@ void cmd_hello(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_clear(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     clear_screen();
     move_cursor_to(0, 0);
 }
@@ -66,6 +107,7 @@ void cmd_echo(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_history(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     shell_print("Command history:\n");
     int count = 0;
     for (int i = 0; i < MAX_HISTORY_ENTRIES; i++) {
@@ -83,6 +125,7 @@ void cmd_history(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_uptime(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     shell_print("System uptime: Not implemented\n");
 }
 
@@ -93,7 +136,7 @@ void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
     }
     
     uint8_t drive_num = args[1][0] - '0';
-    if (drive_num < 0 || drive_num > 9) {
+    if (drive_num > 9) {
         shell_error("format: invalid drive number");
         return;
     }
@@ -106,6 +149,7 @@ void cmd_format(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_lsdri(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     for (int i = 0; i < 4; i++) {
         ide_devices[i].Reserved = 0;
         ide_identify(i / 2, i % 2);
@@ -257,11 +301,30 @@ void cmd_cat(int argc, char args[][MAX_ARG_LENGTH]) {
 }
 
 void cmd_pause(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     shell_print("Press any key to continue...");
     wait_for_input();
     shell_print("\n");
 }
 
 void cmd_exit(int argc, char args[][MAX_ARG_LENGTH]) {
+    (void)argc; (void)args;
     shell_success("Goodbye!");
+}
+
+void cmd_nice(int argc, char args[][MAX_ARG_LENGTH]) {
+    if (argc < 3) { shell_error("nice: missing arguments"); return; }
+    uint32_t pid = 0;
+    for (char *p = args[1]; *p; p++) { if (*p < '0' || *p > '9') { shell_error("nice: invalid pid"); return; } pid = pid * 10 + (*p - '0'); }
+    int newp = 0;
+    int sign = 1;
+    char *s = args[2];
+    if (*s == '-') { sign = -1; s++; }
+    for (; *s; s++) { if (*s < '0' || *s > '9') { shell_error("nice: invalid priority"); return; } newp = newp * 10 + (*s - '0'); }
+    newp *= sign;
+    process_t *proc = get_process_by_pid(pid);
+    if (!proc) { shell_error("nice: pid not found"); return; }
+    if (proc->pid == 0) { shell_error("nice: cannot change kernel priority"); return; }
+    if (newp < 0) proc->priority = 0; else proc->priority = (uint32_t)newp;
+    shell_printf("Set PID %u priority to %u\n", proc->pid, proc->priority);
 }

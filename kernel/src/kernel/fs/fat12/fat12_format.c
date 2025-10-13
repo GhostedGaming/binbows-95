@@ -30,14 +30,14 @@ void format_fat12(uint8_t drive, ...) {
     uint8_t num_fats = 2;
     uint16_t root_entry_count = 512;      // Changed from 224 to 512 for better compatibility
     uint16_t fat_size_16 = 12;            // Will be recalculated below
-    int total_sectors = ide_devices[drive].Size;
+    uint32_t total_sectors = ide_devices[drive].Size;
 
     va_list args;
     va_start(args, drive);
     char *oem_name = va_arg(args, char *);
     va_end(args);
 
-    if (total_sectors <= 0) {
+    if (total_sectors == 0) {
         serial_printf("Error: Invalid drive size for drive %d\n", drive);
         return;
     }

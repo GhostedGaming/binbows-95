@@ -43,28 +43,28 @@ static size_t align_up(size_t size, size_t alignment) {
 
 static inline unsigned long save_and_cli(void) {
     unsigned long flags;
-    asm volatile("pushfq; pop %0" : "=r" (flags) :: "memory");
-    asm volatile("cli" ::: "memory");
+    __asm__ volatile("pushfq; pop %0" : "=r" (flags) :: "memory");
+    __asm__ volatile("cli" ::: "memory");
     return flags;
 }
 
 static inline void restore_flags(unsigned long flags) {
     if (flags & (1UL << 9)) {
-        asm volatile("sti" ::: "memory");
+        __asm__ volatile("sti" ::: "memory");
     }
 }
 
 static inline void invlpg(uint64_t vaddr) {
-    asm volatile("invlpg (%0)" :: "r"(vaddr) : "memory");
+    __asm__ volatile("invlpg (%0)" :: "r"(vaddr) : "memory");
 }
 
 static inline void load_cr3(uint64_t pml4_phys) {
-    asm volatile("mov %0, %%cr3" :: "r"(pml4_phys) : "memory");
+    __asm__ volatile("mov %0, %%cr3" :: "r"(pml4_phys) : "memory");
 }
 
 static inline uint64_t read_cr3(void) {
     uint64_t cr3;
-    asm volatile("mov %%cr3, %0" : "=r"(cr3));
+    __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
     return cr3;
 }
 
@@ -75,18 +75,36 @@ static void memset_page(void *ptr, int value, size_t size) {
     }
 }
 
+static uint64_t free_phys_list = 0;
+
 static uint64_t alloc_physical_page(void) {
+    if (free_phys_list != 0) {
+        uint64_t phys = free_phys_list;
+        free_phys_list = *(uint64_t *)phys_to_virt(phys);
+        void *virt = phys_to_virt(phys);
+        memset_page(virt, 0, PAGE_SIZE);
+        return phys;
+    }
+
     if (next_free_page == 0 || next_free_page >= paging_pool_end) {
         return 0;
     }
-    
+
     uint64_t page = next_free_page;
     next_free_page += PAGE_SIZE;
-    
+
     void *virt = phys_to_virt(page);
     memset_page(virt, 0, PAGE_SIZE);
-    
+
     return page;
+}
+
+static void free_physical_page(uint64_t phys) {
+    if (phys == 0) return;
+    if (phys < paging_pool_start || phys >= paging_pool_end) return;
+    void *virt = phys_to_virt(phys);
+    *(uint64_t *)virt = free_phys_list;
+    free_phys_list = phys;
 }
 
 static page_table_t *get_or_create_table(uint64_t *entry) {
@@ -211,6 +229,10 @@ void init_paging(void) {
     serial_printf("\n");
     
     uint64_t hhdm = hhdm_request.response->offset;
+    (void)hhdm;
+    (void)hhdm;
+    (void)hhdm;
+    (void)hhdm;
     serial_printf("Mapping 0x0-0x%lx to HHDM (0x%lx)...\n", map_limit, hhdm);
     for (uint64_t phys = 0; phys < map_limit; phys += PAGE_SIZE) {
         if ((phys & 0x3FFFFFF) == 0) {
@@ -273,7 +295,6 @@ void init_allocator() {
     
     serial_printf("Back from init_paging, setting up allocator blocks...\n");
 
-    uint64_t hhdm = hhdm_request.response->offset;
     struct limine_memmap_response *memmap = memmap_request.response;
 
     uint64_t total_ram = 0;
@@ -374,4 +395,150 @@ void kfree(void *ptr) {
     coalesce_free_list();
 
     restore_flags(flags);
+}
+
+uint64_t create_user_pml4(void) {
+    uint64_t old_cr3 = read_cr3();
+    page_table_t *old = (page_table_t *)phys_to_virt(old_cr3 & ~0xFFFULL);
+
+    uint64_t new_pml4_phys = alloc_physical_page();
+    if (new_pml4_phys == 0) return 0;
+
+    page_table_t *new_pml4 = (page_table_t *)phys_to_virt(new_pml4_phys);
+    // Copy existing entries (kernel mappings)
+    for (int i = 0; i < 512; i++) {
+        new_pml4->entries[i] = old->entries[i];
+    }
+
+    // Ensure lower half user entries are cleared to avoid accidental kernel writes
+    for (int i = 0; i < 256; i++) {
+        // if present, mark as user if mapping is intended to be user-accessible
+        if (new_pml4->entries[i] & PAGE_PRESENT) {
+            new_pml4->entries[i] |= PAGE_USER;
+        }
+    }
+
+    return new_pml4_phys;
+}
+
+void load_pml4(uint64_t pml4_phys) {
+    load_cr3(pml4_phys);
+}
+
+uint64_t allocate_user_stack(uint64_t pml4_phys, uint64_t user_vaddr, size_t size) {
+    if (size == 0) return 0;
+    size = align_up(size, PAGE_SIZE);
+
+    page_table_t *old_pml4 = pml4;
+    page_table_t *new_pml4 = (page_table_t *)phys_to_virt(pml4_phys);
+    if (!new_pml4) return 0;
+
+    // Temporarily point global pml4 to new table so map_page operates on it
+    pml4 = new_pml4;
+
+    uint64_t stack_base_v = user_vaddr - size;
+    uint64_t first_phys = 0;
+
+    for (uint64_t v = stack_base_v; v < user_vaddr; v += PAGE_SIZE) {
+        uint64_t phys = alloc_physical_page();
+        if (phys == 0) {
+            // roll back? simple: leave partial allocation
+            break;
+        }
+        if (first_phys == 0) first_phys = phys;
+        if (map_page(v, phys, PAGE_PRESENT | PAGE_WRITE | PAGE_USER) != 0) {
+            // failed to map
+            break;
+        }
+    }
+
+    // restore global pml4
+    pml4 = old_pml4;
+
+    return first_phys;
+}
+
+int unmap_page(uint64_t vaddr) {
+    if (!pml4) return -1;
+
+    uint64_t pml4_idx = (vaddr >> 39) & 0x1FF;
+    uint64_t pdpt_idx = (vaddr >> 30) & 0x1FF;
+    uint64_t pd_idx = (vaddr >> 21) & 0x1FF;
+    uint64_t pt_idx = (vaddr >> 12) & 0x1FF;
+
+    page_table_t *pml4_table = pml4;
+    if (!(pml4_table->entries[pml4_idx] & PAGE_PRESENT)) return -1;
+    page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4_table->entries[pml4_idx] & ~0xFFFULL);
+    if (!(pdpt->entries[pdpt_idx] & PAGE_PRESENT)) return -1;
+    page_table_t *pd = (page_table_t *)phys_to_virt(pdpt->entries[pdpt_idx] & ~0xFFFULL);
+    if (!(pd->entries[pd_idx] & PAGE_PRESENT)) return -1;
+    page_table_t *pt = (page_table_t *)phys_to_virt(pd->entries[pd_idx] & ~0xFFFULL);
+    if (!(pt->entries[pt_idx] & PAGE_PRESENT)) return -1;
+
+    pt->entries[pt_idx] = 0;
+    invlpg(vaddr);
+    return 0;
+}
+
+void destroy_user_mappings(uint64_t pml4_phys) {
+    if (pml4_phys == 0) return;
+
+    page_table_t *target = (page_table_t *)phys_to_virt(pml4_phys);
+    if (!target) return;
+
+    for (int pml4_i = 0; pml4_i < 256; pml4_i++) {
+        uint64_t pml4_entry = target->entries[pml4_i];
+        if (!(pml4_entry & PAGE_PRESENT)) continue;
+        page_table_t *pdpt = (page_table_t *)phys_to_virt(pml4_entry & ~0xFFFULL);
+        if (!pdpt) continue;
+        for (int pdpt_i = 0; pdpt_i < 512; pdpt_i++) {
+            uint64_t pdpt_entry = pdpt->entries[pdpt_i];
+            if (!(pdpt_entry & PAGE_PRESENT)) continue;
+            page_table_t *pd = (page_table_t *)phys_to_virt(pdpt_entry & ~0xFFFULL);
+            if (!pd) continue;
+            for (int pd_i = 0; pd_i < 512; pd_i++) {
+                uint64_t pd_entry = pd->entries[pd_i];
+                if (!(pd_entry & PAGE_PRESENT)) continue;
+                page_table_t *pt = (page_table_t *)phys_to_virt(pd_entry & ~0xFFFULL);
+                if (!pt) continue;
+
+                // iterate PTEs and free any mapped physical pages
+                for (int pt_i = 0; pt_i < 512; pt_i++) {
+                    uint64_t pte = pt->entries[pt_i];
+                    if (pte & PAGE_PRESENT) {
+                        uint64_t mapped_phys = pte & ~0xFFFULL;
+                        uint64_t vaddr = ((uint64_t)pml4_i << 39) | ((uint64_t)pdpt_i << 30) | ((uint64_t)pd_i << 21) | ((uint64_t)pt_i << 12);
+                        pt->entries[pt_i] = 0;
+                        invlpg(vaddr);
+                        free_physical_page(mapped_phys);
+                    }
+                }
+
+                // free the page table page itself
+                uint64_t pt_phys = virt_to_phys(pt);
+                free_physical_page(pt_phys);
+
+                // clear the PD entry
+                pd->entries[pd_i] = 0;
+            }
+
+            // free the PD page
+            uint64_t pd_phys = virt_to_phys(pd);
+            free_physical_page(pd_phys);
+
+            // clear the PDPT entry
+            pdpt->entries[pdpt_i] = 0;
+        }
+
+        // free the PDPT page
+        uint64_t pdpt_phys = virt_to_phys(pdpt);
+        free_physical_page(pdpt_phys);
+
+        // clear the PML4 entry
+        target->entries[pml4_i] = 0;
+    }
+
+    // free the PML4 page itself
+    uint64_t pml4_phys_val = virt_to_phys(target);
+    free_physical_page(pml4_phys_val);
 }

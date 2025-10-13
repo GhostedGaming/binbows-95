@@ -8,6 +8,10 @@
 
 static modifier_state_t modifiers = {0};
 
+/* Expose keyboard process pid so other code can reference it */
+uint32_t keyboard_process_pid = 0;
+bool keyboard_enabled = false;
+
 static const uint8_t scancode_to_key[128] = {
     0, KEY_ESC, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 
     KEY_BACKSPACE, KEY_TAB, 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', 
@@ -22,6 +26,12 @@ static const uint8_t scancode_to_key[128] = {
 static const char shift_map[] = "!@#$%^&*()_+{}|:\"~<>?";
 static const char normal_map[] = "1234567890-=[]\\;'`,./";
 
+/* Simple kernel keyboard circular buffer */
+#define KBD_BUF_SIZE 256
+static char kbd_buf[KBD_BUF_SIZE];
+static size_t kbd_head = 0;
+static size_t kbd_tail = 0;
+
 void init_keyboard(void) {
     modifiers = (modifier_state_t){0};
     
@@ -33,7 +43,54 @@ void init_keyboard(void) {
     outb(KB_COMMAND_PORT, KB_ENABLE_KEYBOARD);
     while (inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL);
     
-    enable_keyboard_irq();
+    serial_printf("[KBD] Controller enabled, attempting to enable scanning\n");
+
+    /* Send Enable Scanning (0xF4) to the keyboard device and wait for ACK (0xFA).
+       Retry a few times in case the device is slow or busy. */
+    const int max_retries = 5;
+    int attempt;
+    bool got_ack = false;
+    for (attempt = 0; attempt < max_retries; attempt++) {
+        /* Wait until input buffer empty */
+        int timeout = 100000;
+        while ((inb(KB_STATUS_PORT) & KB_STATUS_INPUT_FULL) && --timeout > 0);
+        if (timeout <= 0) {
+            serial_printf("[KBD] timeout waiting input empty before send (attempt %d)\n", attempt);
+            continue;
+        }
+
+        outb(KB_DATA_PORT, 0xF4); /* enable scanning */
+
+        /* Wait for output or timeout */
+        timeout = 100000;
+        while (!(inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL) && --timeout > 0);
+        if (timeout <= 0) {
+            serial_printf("[KBD] timeout waiting for ACK (attempt %d)\n", attempt);
+            continue;
+        }
+
+        uint8_t resp = inb(KB_DATA_PORT);
+        serial_printf("[KBD] response 0x%02x to enable-scanning\n", resp);
+        if (resp == 0xFA) { /* ACK */
+            got_ack = true;
+            break;
+        } else if (resp == 0xFE) { /* Resend requested */
+            serial_printf("[KBD] resend requested\n");
+            continue;
+        } else {
+            /* Unexpected response; try again */
+            continue;
+        }
+    }
+
+    if (got_ack) {
+        enable_keyboard_irq();
+        keyboard_enabled = true;
+        serial_printf("[KBD] Keyboard enabled (ACK received)\n");
+    } else {
+        serial_printf("[KBD] Failed to enable keyboard after %d attempts; keyboard_enabled=0\n", max_retries);
+        keyboard_enabled = false;
+    }
 }
 
 char get_character(uint8_t key) {
@@ -159,6 +216,7 @@ void handle_key_release(uint8_t key) {
 }
 
 void keyboard_handler(struct interrupt_registers *regs) {
+    (void)regs;
     if (!(inb(KB_STATUS_PORT) & KB_STATUS_OUTPUT_FULL)) {
         return;
     }
@@ -173,7 +231,7 @@ void keyboard_handler(struct interrupt_registers *regs) {
     uint8_t scancode = scancode_raw & 0x7F;
     bool key_pressed = !(scancode_raw & 0x80);
     
-    if (scancode >= sizeof(scancode_to_key)) {
+    if (scancode >= (sizeof(scancode_to_key) / sizeof(scancode_to_key[0]))) {
         modifiers.extended = false;
         return;
     }
@@ -182,6 +240,10 @@ void keyboard_handler(struct interrupt_registers *regs) {
     
     if (key_pressed) {
         received_key = key;
+        char c = get_character(key);
+        if (c) {
+            kbd_enqueue_char(c);
+        }
     } else {
         handle_key_release(key);
     }
@@ -193,4 +255,42 @@ void enable_keyboard_irq(void) {
     uint8_t mask = inb(PIC1_DATA_PORT);
     mask &= ~(1 << 1);
     outb(PIC1_DATA_PORT, mask);
+}
+
+void disable_keyboard_irq(void) {
+    uint8_t mask = inb(PIC1_DATA_PORT);
+    mask |= (1 << 1);
+    outb(PIC1_DATA_PORT, mask);
+    keyboard_enabled = false;
+    /* also clear buffer and received key */
+    kbd_tail = kbd_head; /* empty buffer */
+    received_key = 0;
+}
+
+void kbd_enqueue_char(char c) {
+    size_t next = (kbd_head + 1) % KBD_BUF_SIZE;
+    if (next == kbd_tail) {
+        // buffer full, drop
+        return;
+    }
+    kbd_buf[kbd_head] = c;
+    kbd_head = next;
+}
+
+size_t kbd_available(void) {
+    if (kbd_head >= kbd_tail) return kbd_head - kbd_tail;
+    return KBD_BUF_SIZE - (kbd_tail - kbd_head);
+}
+
+size_t kbd_read_chars(char *buf, size_t len) {
+    size_t i = 0;
+    while (i < len && kbd_tail != kbd_head) {
+        buf[i++] = kbd_buf[kbd_tail];
+        kbd_tail = (kbd_tail + 1) % KBD_BUF_SIZE;
+    }
+    return i;
+}
+
+void kbd_clear_buffer(void) {
+    kbd_tail = kbd_head;
 }

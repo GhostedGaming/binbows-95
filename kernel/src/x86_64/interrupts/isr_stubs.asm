@@ -1,9 +1,3 @@
-; ISR assembly handlers for x86_64
-; Low-level interrupt service routines with proper register preservation
-
-[BITS 64]
-
-; External C function declarations
 extern isr_handler
 extern irq_handler
 
@@ -122,10 +116,11 @@ isr_common_stub:
     mov rbp, rsp
     and rsp, ~0xF
     
-    ; Get interrupt number from saved stack
+    ; Get interrupt number and RIP from saved stack
     ; Stack layout: [regs...] [ds] [es] [r15-rax] [int_no] [err_code] [rip] [cs] [rflags]
     mov rdi, [rbp + 136]  ; Pass interrupt number as first argument
-    
+    mov rsi, [rbp + 144]  ; Pass RIP as second argument
+
     ; Call C exception handler
     call isr_handler
     

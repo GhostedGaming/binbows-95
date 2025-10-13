@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #define KB_DATA_PORT 0x60
 #define KB_STATUS_PORT 0x64
@@ -66,7 +67,22 @@ struct interrupt_registers {
 void init_keyboard(void);
 void keyboard_handler(struct interrupt_registers *regs);
 void enable_keyboard_irq(void);
+void disable_keyboard_irq(void);
 char get_character(uint8_t key);
 void handle_key_press(uint8_t key);
+
+/* Enable/disable flag exported for other code to query if needed */
+extern bool keyboard_enabled;
+
+/* Clear queued keyboard characters */
+void kbd_clear_buffer(void);
+
+// Kernel keyboard buffer API for syscalls
+void kbd_enqueue_char(char c);
+size_t kbd_read_chars(char *buf, size_t len);
+size_t kbd_available(void);
+
+/* PID of the keyboard process created by kernel_main (0 if none) */
+extern uint32_t keyboard_process_pid;
 
 #endif

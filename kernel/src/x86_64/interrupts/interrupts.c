@@ -38,6 +38,52 @@ extern void isr28(void), isr29(void), isr30(void), isr31(void);
 extern void irq0(void);  // Timer (IRQ0 -> INT 32)
 extern void irq1(void);  // Keyboard (IRQ1 -> INT 33)
 
+// Minimal syscall handler: called via isr128 stub (int 0x80)
+void syscall_handler(void) {
+    // For now, support one simple syscall: write(fd, buf, len)
+    // Arguments passed via registers (SysV-like): rdi=fd, rsi=buf, rdx=len
+    uint64_t fd, buf, len;
+    __asm__ volatile ("mov %%rdi, %0" : "=r"(fd));
+    __asm__ volatile ("mov %%rsi, %0" : "=r"(buf));
+    __asm__ volatile ("mov %%rdx, %0" : "=r"(len));
+
+    if (fd == 1) {
+        const char *s = (const char *)buf;
+        for (uint64_t i = 0; i < len; i++) {
+            char c = s[i];
+            (void)c;
+            // print to serial
+            write_serial_char(c);
+        }
+        return;
+    }
+
+    // support read(0, buf, len) from keyboard buffer
+    if (fd == 0) {
+        if (len == 0 || buf == 0) return;
+        size_t to_read = (size_t)len;
+        char tmp[256];
+        if (to_read > sizeof(tmp)) to_read = sizeof(tmp);
+        size_t avail = kbd_available();
+        if (avail == 0) {
+            // no data available, return 0 (non-blocking)
+            return;
+        }
+        if (to_read > avail) to_read = avail;
+        size_t read = kbd_read_chars(tmp, to_read);
+        if (read == 0) return;
+
+        // Copy into user buffer. At this point the user CR3 should be active
+        // because the syscall gate was invoked from userland. Use simple memmove.
+        char *user_buf = (char *)buf;
+        for (size_t i = 0; i < read; i++) {
+            user_buf[i] = tmp[i];
+        }
+        return;
+    }
+    // return to user; nothing special to do
+}
+
 // ============================================================================
 // MSR Read/Write Functions
 // ============================================================================
@@ -120,6 +166,10 @@ void install_exceptions(void) {
         idt_add_entry(i, exceptions[i], 0x8E);
     }
 
+    // Install syscall vector 0x80: Present, DPL=3, 64-bit interrupt gate (0xEE)
+    extern void isr128(void); // syscall stub (reuse existing naming pattern)
+    idt_add_entry(0x80, isr128, 0xEE);
+
     write_serial("IDT: CPU exception handlers (0-31) installed\n");
 }
 
@@ -157,7 +207,7 @@ void init_keyboard_irq(void) {
  * C-level CPU exception handler
  * Called from assembly stub with interrupt number
  */
-void isr_handler(uint64_t interrupt_number) {
+void isr_handler(uint64_t interrupt_number, uint64_t rip) {
     serial_printf("\n=== CPU EXCEPTION %lu ===\n", interrupt_number);
 
     switch(interrupt_number) {
@@ -176,10 +226,19 @@ void isr_handler(uint64_t interrupt_number) {
             serial_printf("Cause: INT3 instruction executed\n");
             break;
 
-        case 6:
+        case 6: {
             serial_printf("Exception: Invalid Opcode (#UD)\n");
             serial_printf("Cause: Processor encountered an invalid or reserved opcode\n");
+            serial_printf("Faulting RIP: 0x%016lx\n", rip);
+            /* Dump the next 16 bytes at RIP to help identify the opcode */
+            const unsigned char *bytes = (const unsigned char *)rip;
+            serial_printf("Bytes at RIP: ");
+            for (int i = 0; i < 16; i++) {
+                serial_printf("%02x ", bytes[i]);
+            }
+            serial_printf("\n");
             break;
+        }
 
         case 8:
             serial_printf("Exception: Double Fault (#DF)\n");
@@ -200,9 +259,14 @@ void isr_handler(uint64_t interrupt_number) {
         case 13: {
             serial_printf("Exception: General Protection Fault (#GP)\n");
             serial_printf("Cause: Protection violation (memory access, privilege level, etc.)\n");
-            
-            // Note: Error code is on the stack but we don't retrieve it here
-            // Could be extended to read error code for more detailed diagnostics
+            serial_printf("Faulting RIP: 0x%016lx\n", rip);
+            /* Dump the next 16 bytes at RIP to help debug the fault */
+            const unsigned char *gbytes = (const unsigned char *)rip;
+            serial_printf("Bytes at RIP: ");
+            for (int i = 0; i < 16; i++) {
+                serial_printf("%02x ", gbytes[i]);
+            }
+            serial_printf("\n");
             break;
         }
 
@@ -212,7 +276,14 @@ void isr_handler(uint64_t interrupt_number) {
             
             serial_printf("Exception: Page Fault (#PF)\n");
             serial_printf("Faulting address: 0x%016lx\n", fault_addr);
-            
+            serial_printf("Faulting RIP: 0x%016lx\n", rip);
+            const unsigned char *pbytes = (const unsigned char *)rip;
+            serial_printf("Bytes at RIP: ");
+            for (int i = 0; i < 16; i++) {
+                serial_printf("%02x ", pbytes[i]);
+            }
+            serial_printf("\n");
+
             // Check common problematic addresses
             if (fault_addr == 0x0) {
                 serial_printf("*** NULL POINTER DEREFERENCE ***\n");
@@ -222,9 +293,6 @@ void isr_handler(uint64_t interrupt_number) {
             } else if (fault_addr < 0x1000) {
                 serial_printf("*** Low memory access (likely null pointer + offset) ***\n");
             }
-            
-            // Note: Error code on stack contains P, W/R, U/S, RSVD, I/D bits
-            // Could be extended to decode error code for detailed info
             break;
         }
 
@@ -272,10 +340,6 @@ void isr_handler(uint64_t interrupt_number) {
 // Hardware Interrupt Handler
 // ============================================================================
 
-/**
- * C-level hardware IRQ handler
- * Called from assembly stub with IRQ vector number
- */
 void irq_handler(uint64_t irq_number) {
     switch(irq_number) {
         case 32: // IRQ0 - PIT Timer

@@ -54,6 +54,7 @@ ifeq ($(ARCH),x86_64)
 		-I include/drivers/pci \
 		-I include/drivers/sound \
 		-I include/drivers/video \
+		-I include/userspace \
         -I bin/includes \
 		-I limine-protocol/include \
 		-isystem freestnd-c-hdrs/include \

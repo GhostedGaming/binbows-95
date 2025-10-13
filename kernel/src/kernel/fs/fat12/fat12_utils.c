@@ -1,5 +1,9 @@
 #include <fat12.h>
 
+bpb_t12 cached_bpb12;
+bool bpb_cached12 = false;
+uint8_t cached_drive12 = 0xFF;
+
 void fat12_format_filename(const char* filename, char* fat_name) {
     memset(fat_name, ' ', 11);
     fat_name[11] = '\0';
