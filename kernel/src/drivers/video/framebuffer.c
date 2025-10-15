@@ -6,6 +6,7 @@
 #include <font.h>
 #include <util.h>
 
+
 extern volatile struct limine_framebuffer_request framebuffer_request;
 
 int fb_width = 0;
