@@ -6,7 +6,7 @@
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
-extern volatile struct limine_kernel_address_request kernel_address_request;
+extern volatile struct limine_executable_address_request kernel_address_request;
 
 static free_list_block *free_list_head = NULL;
 
@@ -29,12 +29,16 @@ static uint64_t paging_pool_end = 0;
 
 uint32_t page_directory[1024] __attribute__((aligned(4096)));
 
-static inline void *phys_to_virt(uint64_t phys) {
+void *phys_to_virt(uint64_t phys) {
     return (void *)(phys + hhdm_request.response->offset);
 }
 
-static inline uint64_t virt_to_phys(void *virt) {
+uint64_t virt_to_phys(void *virt) {
     return (uint64_t)virt - hhdm_request.response->offset;
+}
+
+uint64_t kernel_virt_to_phys(void *virt) {
+    return (uint64_t)virt - kernel_address_request.response->virtual_base + kernel_address_request.response->physical_base;
 }
 
 static size_t align_up(size_t size, size_t alignment) {
@@ -229,10 +233,6 @@ void init_paging(void) {
     serial_printf("\n");
     
     uint64_t hhdm = hhdm_request.response->offset;
-    (void)hhdm;
-    (void)hhdm;
-    (void)hhdm;
-    (void)hhdm;
     serial_printf("Mapping 0x0-0x%lx to HHDM (0x%lx)...\n", map_limit, hhdm);
     for (uint64_t phys = 0; phys < map_limit; phys += PAGE_SIZE) {
         if ((phys & 0x3FFFFFF) == 0) {
@@ -254,6 +254,8 @@ void init_paging(void) {
 }
 
 static void insert_free_block_sorted(free_list_block *block) {
+    if (!block) return;
+    
     if (!free_list_head || block < free_list_head) {
         block->next = free_list_head;
         free_list_head = block;
@@ -261,22 +263,18 @@ static void insert_free_block_sorted(free_list_block *block) {
     }
 
     free_list_block *cur = free_list_head;
-    while (cur->next && cur->next < block) cur = cur->next;
-    block->next = cur->next;
-    cur->next = block;
-}
-
-static void coalesce_free_list(void) {
-    free_list_block *cur = free_list_head;
-    while (cur && cur->next) {
-        uint8_t *cur_end = (uint8_t *)cur + sizeof(free_list_block) + cur->size;
-        if (cur_end == (uint8_t *)cur->next) {
-            cur->size += sizeof(free_list_block) + cur->next->size;
-            cur->next = cur->next->next;
-        } else {
-            cur = cur->next;
+    int safety = 0;
+    while (cur->next && cur->next < block) {
+        cur = cur->next;
+        safety++;
+        if (safety > 1000) {
+            serial_printf("insert_free_block_sorted: Detected loop in free list!\n");
+            return;
         }
     }
+    
+    block->next = cur->next;
+    cur->next = block;
 }
 
 void init_allocator() {
@@ -343,14 +341,19 @@ void init_allocator() {
         return;
     }
 
-    coalesce_free_list();
-
     serial_printf("Allocator ready: %d blocks\n", blocks_added);
 }
 
 void *kmalloc(size_t size) {
     if (size == 0) return NULL;
-    if (free_list_head == NULL) return NULL;
+    
+    if (size > 0x10000000) {
+        return NULL;
+    }
+    
+    if (free_list_head == NULL) {
+        return NULL;
+    }
 
     size = align_up(size, ALIGN_SIZE);
     if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
@@ -368,12 +371,17 @@ void *kmalloc(size_t size) {
                 new_block->next = block->next;
 
                 block->size = size;
-                block->next = new_block;
+                *current = new_block;
+            } else {
+                *current = block->next;
             }
-
-            *current = block->next;
+            
             restore_flags(flags);
-            return (uint8_t *)block + sizeof(free_list_block);
+            
+            void *result = (uint8_t *)block + sizeof(free_list_block);
+            memset_page(result, 0, size);
+            
+            return result;
         }
 
         current = &(block->next);
@@ -384,16 +392,22 @@ void *kmalloc(size_t size) {
 }
 
 void kfree(void *ptr) {
-    if (ptr == NULL) return;
+    if (ptr == NULL) {
+        return;
+    }
 
     free_list_block *block = (free_list_block *)((uint8_t *)ptr - sizeof(free_list_block));
+    
+    uint64_t block_addr = (uint64_t)block;
+    uint64_t hhdm_offset = hhdm_request.response->offset;
+    
+    if (block_addr < hhdm_offset) {
+        serial_printf("kfree: Invalid block address 0x%lx (below HHDM)\n", block_addr);
+        return;
+    }
 
     unsigned long flags = save_and_cli();
-
     insert_free_block_sorted(block);
-
-    coalesce_free_list();
-
     restore_flags(flags);
 }
 
@@ -405,14 +419,12 @@ uint64_t create_user_pml4(void) {
     if (new_pml4_phys == 0) return 0;
 
     page_table_t *new_pml4 = (page_table_t *)phys_to_virt(new_pml4_phys);
-    // Copy existing entries (kernel mappings)
+
     for (int i = 0; i < 512; i++) {
         new_pml4->entries[i] = old->entries[i];
     }
 
-    // Ensure lower half user entries are cleared to avoid accidental kernel writes
     for (int i = 0; i < 256; i++) {
-        // if present, mark as user if mapping is intended to be user-accessible
         if (new_pml4->entries[i] & PAGE_PRESENT) {
             new_pml4->entries[i] |= PAGE_USER;
         }
@@ -433,7 +445,6 @@ uint64_t allocate_user_stack(uint64_t pml4_phys, uint64_t user_vaddr, size_t siz
     page_table_t *new_pml4 = (page_table_t *)phys_to_virt(pml4_phys);
     if (!new_pml4) return 0;
 
-    // Temporarily point global pml4 to new table so map_page operates on it
     pml4 = new_pml4;
 
     uint64_t stack_base_v = user_vaddr - size;
@@ -442,17 +453,14 @@ uint64_t allocate_user_stack(uint64_t pml4_phys, uint64_t user_vaddr, size_t siz
     for (uint64_t v = stack_base_v; v < user_vaddr; v += PAGE_SIZE) {
         uint64_t phys = alloc_physical_page();
         if (phys == 0) {
-            // roll back? simple: leave partial allocation
             break;
         }
         if (first_phys == 0) first_phys = phys;
         if (map_page(v, phys, PAGE_PRESENT | PAGE_WRITE | PAGE_USER) != 0) {
-            // failed to map
             break;
         }
     }
 
-    // restore global pml4
     pml4 = old_pml4;
 
     return first_phys;
@@ -502,7 +510,6 @@ void destroy_user_mappings(uint64_t pml4_phys) {
                 page_table_t *pt = (page_table_t *)phys_to_virt(pd_entry & ~0xFFFULL);
                 if (!pt) continue;
 
-                // iterate PTEs and free any mapped physical pages
                 for (int pt_i = 0; pt_i < 512; pt_i++) {
                     uint64_t pte = pt->entries[pt_i];
                     if (pte & PAGE_PRESENT) {
@@ -514,31 +521,24 @@ void destroy_user_mappings(uint64_t pml4_phys) {
                     }
                 }
 
-                // free the page table page itself
                 uint64_t pt_phys = virt_to_phys(pt);
                 free_physical_page(pt_phys);
 
-                // clear the PD entry
                 pd->entries[pd_i] = 0;
             }
 
-            // free the PD page
             uint64_t pd_phys = virt_to_phys(pd);
             free_physical_page(pd_phys);
 
-            // clear the PDPT entry
             pdpt->entries[pdpt_i] = 0;
         }
 
-        // free the PDPT page
         uint64_t pdpt_phys = virt_to_phys(pdpt);
         free_physical_page(pdpt_phys);
 
-        // clear the PML4 entry
         target->entries[pml4_i] = 0;
     }
 
-    // free the PML4 page itself
     uint64_t pml4_phys_val = virt_to_phys(target);
     free_physical_page(pml4_phys_val);
 }

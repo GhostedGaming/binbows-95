@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <limine.h>
+
+extern volatile struct limine_executable_address_request kernel_address_request;
+
 typedef struct free_list_block {
     size_t size;
     struct free_list_block *next;
@@ -19,5 +23,8 @@ void load_pml4(uint64_t pml4_phys);
 uint64_t allocate_user_stack(uint64_t pml4_phys, uint64_t user_vaddr, size_t size);
 int unmap_page(uint64_t vaddr);
 void destroy_user_mappings(uint64_t pml4_phys);
+uint64_t virt_to_phys(void *virt);
+void *phys_to_virt(uint64_t phys);
+uint64_t kernel_virt_to_phys(void *virt);
 
 #endif

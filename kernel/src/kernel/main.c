@@ -1,5 +1,7 @@
 #include <kernel.h>
 #include <elixir.h>
+#include <acpi.h>
+#include <apic.h>
 
 extern volatile struct limine_memmap_request memmap_request;
 extern volatile struct limine_hhdm_request hhdm_request;
@@ -33,32 +35,35 @@ void kernel_main(void) {
 
     init_fb();
 
-    ide_initialize();
-    sata_init();
+    check_all_buses();
+    ahci_init();
 
-    serial_printf("\n=== Initializing Elixir Filesystem ===\n");
-    struct elixir_init_data* init_data = init_elixir(&abar->ports[0]);
-    if (!init_data) {
-        serial_printf("Failed to initialize Elixir filesystem structures\n");
+    acpi_init();
+    apic_init();
+
+    serial_printf("\n=== Formatting Elixir Filesystem ===\n");
+    int format_result = elixir_format(&abar->ports[0], 65536 * 512);
+    if (format_result != 0) {
+        serial_printf("Failed to format Elixir filesystem: %d\n", format_result);
     } else {
-        serial_printf("Elixir structures created successfully\n");
-        
-        int result = write_elixir_to_disk(&abar->ports[0], init_data);
-        if (result != 0) {
-            serial_printf("Failed to write Elixir filesystem to disk: %d\n", result);
+        serial_printf("Elixir filesystem formatted successfully.\n");
+        elixir_fs_t* fs = elixir_mount(&abar->ports[0]);
+        if (!fs) {
+            serial_printf("Failed to mount Elixir filesystem.\n");
         } else {
-            serial_printf("Elixir filesystem written to disk successfully\n");
+            serial_printf("Elixir filesystem mounted successfully.\n");
+            elixir_unmount(fs);
         }
-        
-        destroy_elixir_init_data(init_data);
     }
 
     create_process(test_scheduler, 1);
     create_process(shell_process, 10);
     shell_init();
 
+    write_serial("Enabling interrupts...\n");
     asm volatile ("sti");
 
+    write_serial("Entering idle loop...\n");
     while (1) {
         asm volatile ("hlt");
     }

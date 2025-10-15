@@ -40,10 +40,7 @@ clone_repo_commit \
     cc-runtime \
     dae79833b57a01b9fd3e359ee31def69f5ae899b
 
-clone_repo_commit \
-    https://github.com/limine-bootloader/limine-protocol.git \
-    limine-protocol \
-    fedf97facd1c473ee8720f8dfd5a71d03490d928
+
 
 set +x
 

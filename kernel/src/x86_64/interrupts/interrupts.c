@@ -162,12 +162,10 @@ void install_exceptions(void) {
     };
 
     for (int i = 0; i < 32; i++) {
-        // 0x8E = Present, DPL=0, 64-bit interrupt gate
         idt_add_entry(i, exceptions[i], 0x8E);
     }
 
-    // Install syscall vector 0x80: Present, DPL=3, 64-bit interrupt gate (0xEE)
-    extern void isr128(void); // syscall stub (reuse existing naming pattern)
+    extern void isr128(void);
     idt_add_entry(0x80, isr128, 0xEE);
 
     write_serial("IDT: CPU exception handlers (0-31) installed\n");

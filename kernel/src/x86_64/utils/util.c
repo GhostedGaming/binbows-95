@@ -3,8 +3,9 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-int strlen(const char *str) {
-    int len = 0;
+/*
+size_t strlen(const char *str) {
+    size_t len = 0;
     while (str && *str++) len++;
     return len;
 }
@@ -37,9 +38,55 @@ char *strcpy(char *dest, const char *src) {
         dest[i] = src[i];
         i++;
     }
-    dest[i] = '\0';
     return dest;
 }
+
+// Custom strtok implementation
+static char* strtok_last = NULL;
+char* strtok(char* str, const char* delim) {
+    char* token;
+    if (str == NULL) {
+        str = strtok_last;
+    }
+    if (str == NULL) {
+        return NULL;
+    }
+
+    // Skip leading delimiters
+    while (*str != '\0' && strchr(delim, *str) != NULL) {
+        str++;
+    }
+    if (*str == '\0') {
+        strtok_last = NULL;
+        return NULL;
+    }
+
+    token = str;
+    while (*str != '\0' && strchr(delim, *str) == NULL) {
+        str++;
+    }
+
+    if (*str != '\0') {
+        *str = '\0';
+        str++;
+    }
+    strtok_last = str;
+    return token;
+}
+
+// Custom strrchr implementation
+char* strrchr(const char* str, int c) {
+    const char* last = NULL;
+    while (*str != '\0') {
+        if (*str == (char)c) {
+            last = str;
+        }
+        str++;
+    }
+    if (c == '\0') return (char*)str; // Handle null terminator case
+    return (char*)last;
+}
+
 
 char *strncpy(char *dest, const char *src, int n) {
     if (!dest || !src) return dest;
@@ -402,6 +449,7 @@ void *memset(void *s, int c, size_t n) {
     return s;
 }
 
+/*
 void *memmove(void *dest, const void *src, size_t n) {
     uint8_t *pdest = (uint8_t *)dest;
     const uint8_t *psrc = (const uint8_t *)src;
@@ -427,3 +475,4 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     }
     return 0;
 }
+*/

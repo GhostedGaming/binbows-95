@@ -47,11 +47,9 @@ void unblock_process(uint32_t pid);
 process_t* get_current_process(void);
 process_t* get_process_by_pid(uint32_t pid);
 
-/* New helpers to enumerate processes from user commands */
 uint32_t get_process_count(void);
 process_t* get_process_at(uint32_t index);
 
-uint64_t* allocate_process_stack(void);
 void free_process_stack(uint64_t* stack_base);
 void setup_initial_stack(process_t* process);
 void yield(void);

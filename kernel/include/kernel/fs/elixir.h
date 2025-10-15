@@ -1,73 +1,67 @@
 #ifndef ELIXIR_H
 #define ELIXIR_H
 
-#include <stdint.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <sata.h>
 
-#define SUPER_BLOCK_MAGIC 0x454C4658
-#define FILE_TABLE_MAGIC 0x454C4958
+#define ELIXIR_SUPER_BLOCK_MAGIC 0x454C4658
+#define ELIXIR_FILE_TABLE_MAGIC 0x454C4958
+#define ELIXIR_MAX_FILENAME 255
+#define ELIXIR_MAX_FILES 1024
+#define ELIXIR_BLOCK_SIZE 4096
 
-#define SUCCESS 0
-#define FAILED_TO_CREATE_SUPER_BLOCK -1
-#define FAILED_TO_WRITE_SUPER_BLOCK -2
-#define FAILED_TO_READ_SUPER_BLOCK -3
-#define FAILED_TO_ALLOCATE_FILE_TABLE -4
-#define FAILED_TO_WRITE_FILE_TABLE -5
-#define FAILED_TO_READ_FILE_TABLE -6
-#define FAILED_FILE_TABLE_VERIFICATION -7
-#define FAILED_TO_WRITE_FILE -8
-
-#define MAX_FILENAME 255
-#define MAX_FILES 1024
-
-struct super_block {
+typedef struct {
     uint32_t magic;
     uint32_t version;
     uint64_t total_blocks;
-    uint32_t block_size;
+    uint64_t free_blocks;
+
+    uint64_t bitmap_start_block;
+    uint64_t bitmap_size_blocks;
+
     uint64_t file_table_start_block;
     uint64_t file_table_size_blocks;
+
     uint64_t data_start_block;
-    uint64_t free_blocks;
-    uint8_t reserved[472];
-} __attribute__((packed));
+} __attribute__((packed)) elixir_superblock_t;
 
-struct file_entry {
-    char name[MAX_FILENAME];
-    uint32_t start_block;
-    uint32_t size_blocks;
+typedef enum {
+    ELIXIR_FILE_TYPE_FILE,
+    ELIXIR_FILE_TYPE_DIRECTORY
+} elixir_file_type_t;
+
+typedef struct {
+    char name[ELIXIR_MAX_FILENAME];
+    elixir_file_type_t type;
+    uint64_t start_block;
     uint64_t size_bytes;
-} __attribute__((packed));
+    uint64_t size_blocks;
+} __attribute__((packed)) elixir_file_entry_t;
 
-struct file_table {
+typedef struct {
     uint32_t magic;
-    uint32_t max_entries;
     uint32_t num_entries;
-    uint32_t reserved;
-    struct file_entry entries[MAX_FILES];
-} __attribute__((packed));
+    elixir_file_entry_t entries[ELIXIR_MAX_FILES];
+} __attribute__((packed)) elixir_file_table_t;
 
-struct elixir_init_data {
-    struct super_block* sb;
-    struct file_table* ft;
-    uint8_t sectors_per_block;
-    uint64_t file_table_start_sector;
-    uint64_t file_table_sectors;
-};
+typedef struct {
+    HBA_PORT* port;
+    elixir_superblock_t sb;
+    uint8_t* free_block_bitmap;
+} elixir_fs_t;
 
-struct super_block* create_super_block(uint64_t total_blocks, uint32_t block_size);
-void destroy_super_block(struct super_block* sb);
-struct file_table* create_file_table();
-void destroy_file_table(struct file_table* ft);
-void destroy_file(struct file_entry* fe);
-int new_entry(struct file_table* ft, struct file_entry* fe);
-struct file_table* load_file_table(HBA_PORT *port);
-int save_file_table(HBA_PORT *port, struct file_table* ft);
-int create_file(char* name, HBA_PORT *port, void* data, size_t data_size);
-void* read_file(char* name, HBA_PORT *port, size_t* out_size);
-struct elixir_init_data* init_elixir(HBA_PORT *port);
-int write_elixir_to_disk(HBA_PORT *port, struct elixir_init_data* init_data);
-void destroy_elixir_init_data(struct elixir_init_data* init_data);
+int elixir_format(HBA_PORT* port, uint64_t device_size_bytes);
+elixir_fs_t* elixir_mount(HBA_PORT* port);
+void elixir_unmount(elixir_fs_t* fs);
 
-#endif
+int elixir_create_file(elixir_fs_t* fs, const char* path, elixir_file_type_t type, const void* data, size_t size);
+void* elixir_read_file(elixir_fs_t* fs, const char* path, size_t* out_size);
+int elixir_delete_file(elixir_fs_t* fs, const char* path);
+int elixir_rename_file(elixir_fs_t* fs, const char* old_path, const char* new_path);
+int elixir_mkdir(elixir_fs_t* fs, const char* path);
+int elixir_rmdir(elixir_fs_t* fs, const char* path);
+elixir_file_entry_t* elixir_list_directory(elixir_fs_t* fs, const char* path, uint32_t* num_entries);
+
+#endif // ELIXIR_H

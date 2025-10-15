@@ -192,13 +192,15 @@ run-codespace: clean $(IMAGE_NAME).iso ide-image ahci-image
 		-nographic \
 		-s
 
-.PHONY: run-bios
-run-bios: $(IMAGE_NAME).iso
-	QEMU_AUDIO_DRV=pa qemu-system-$(ARCH) \
-		-M q35 \
-		-cdrom $(IMAGE_NAME).iso \
-		-boot d \
-		$(QEMUFLAGS)
+run: $(ISO)
+	$(QEMU) -cdrom $< $(QEMU_FLAGS)
+
+boot-hdd: ahci.img
+	$(QEMU) $(QEMU_FLAGS)
+
+deploy-hdd: ahci.img
+	@echo "Making the hard drive bootable..."
+	@$(LIMINE_EXE) $<
 
 .PHONY: run-hdd-bios
 run-hdd-bios: $(IMAGE_NAME).hdd
@@ -230,8 +232,13 @@ kernel-deps:
 	touch kernel-deps
 
 .PHONY: kernel
-kernel: kernel-deps
+kernel: kernel-deps copy-limine-h-to-kernel-include
 	$(MAKE) -C kernel
+
+.PHONY: copy-limine-h-to-kernel-include
+copy-limine-h-to-kernel-include: limine/limine
+	@mkdir -p kernel/include
+	@cp limine/limine.h kernel/include/limine.h
 
 $(IMAGE_NAME).iso: limine/limine kernel
 	rm -rf iso_root
@@ -314,4 +321,4 @@ clean:
 .PHONY: distclean
 distclean:
 	$(MAKE) -C kernel distclean
-	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img ahci.img
+	rm -rf iso_root *.iso *.hdd kernel-deps limine ovmf ide.img ahci.img kernel/include/limine.h
