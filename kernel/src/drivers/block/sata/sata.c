@@ -7,8 +7,6 @@
 static HBA_MEM *s_abar = NULL;
 HBA_MEM *abar = NULL;
 
-
-
 static uint64_t get_phys_addr(void *virt) {
     if ((uint64_t)virt >= 0xffff800000000000) {
         return virt_to_phys(virt);

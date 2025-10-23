@@ -1,18 +1,9 @@
-/*
- * Copyright (c) 2023, Gavin D'souza. All rights reserved.
- *
- * SPDX-License-Identifier: BSD-2-Clause
- */
-
 #ifndef SATA_H
 #define SATA_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-// Ref: https://www.intel.com/content/www/us/en/io/serial-ata/serial-ata-ahci-spec-rev1-3-1.html
-
-// --- FIS (Frame Information Structure) Types ---
 #define FIS_TYPE_REG_H2D 0x27    // Register FIS - Host to Device
 #define FIS_TYPE_REG_D2H 0x34    // Register FIS - Device to Host
 #define FIS_TYPE_DMA_ACT 0x39    // DMA Activate FIS - Device to Host
