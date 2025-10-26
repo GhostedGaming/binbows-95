@@ -1,101 +1,43 @@
 #include <pic.h>
 #include <serial.h>
 
+// Send End of Interrupt
 void PIC_sendEOI(uint8_t irq) {
     if (irq >= 8)
         outb(PIC2_COMMAND, PIC_EOI);
-
     outb(PIC1_COMMAND, PIC_EOI);
 }
 
-void PIC_remap(int offset1, int offset2) {
-    outb(PIC1_COMMAND, ICW1_INIT | ICW1_ICW4);
-    outb(PIC2_COMMAND, ICW1_INIT | ICW1_ICW4);
-    outb(PIC1_DATA, offset1);
-    outb(PIC2_DATA, offset2);
-    outb(PIC1_DATA, 4);
-    outb(PIC2_DATA, 2);
-
-    outb(PIC1_DATA, ICW4_8086);
-    outb(PIC2_DATA, ICW4_8086);
-
-    outb(PIC1_DATA, 0);
-    outb(PIC2_DATA, 0);
-}
-
-void pic_disable(void) {
-    outb(PIC1_DATA, 0xff);
-    outb(PIC2_DATA, 0xff);
-}
-
-void IRQ_set_mask(uint8_t IRQline) {
-    uint16_t port;
-    uint8_t value;
-
-    if (IRQline < 8) {
-        port = PIC1_DATA;
-    }
-    else {
-        port = PIC2_DATA;
-        IRQline -= 8;
-    }
-    value = inb(port) | (1 << IRQline);
-    outb(port, value);
-}
-
-void IRQ_clear_mask(uint8_t IRQline) {
-    uint16_t port;
-    uint8_t value;
-
-    if (IRQline < 8) {
-        port = PIC1_DATA;
-    }
-    else {
-        port = PIC2_DATA;
-        IRQline -= 8;
-    }
-    value = inb(port) & ~(1 << IRQline);
-    outb(port, value);
-}
-
-void pic_enable_irq(uint8_t irq) {
-    uint16_t port;
-    uint8_t value;
-
-    if (irq < 8) {
-        port = 0x21;
-    } else {
-        port = 0xA1;
-        irq -= 8;
-    }
+// Unmask (enable) an IRQ line
+void IRQ_clear_mask(uint8_t irq) {
+    uint16_t port = (irq < 8) ? PIC1_DATA : PIC2_DATA;
+    if (irq >= 8) irq -= 8;
     
-    value = inb(port) & ~(1 << irq);
+    uint8_t value = inb(port) & ~(1 << irq);
     outb(port, value);
 }
 
+// Initialize PIC (remap to IRQ 32-47, enable timer and keyboard)
 void init_pic(void) {
-    outb(0x20, 0x11);
+    // Initialize both PICs
+    outb(0x20, 0x11);  // ICW1: Initialize + ICW4
     outb(0xA0, 0x11);
     
+    // Remap: Master to 32, Slave to 40
     outb(0x21, 0x20);
     outb(0xA1, 0x28);
     
-    outb(0x21, 0x04);
-    outb(0xA1, 0x02);
+    // Tell PICs about each other
+    outb(0x21, 0x04);  // Master has slave at IRQ2
+    outb(0xA1, 0x02);  // Slave cascade identity
     
-    outb(0x21, 0x01);
+    // Set mode
+    outb(0x21, 0x01);  // 8086 mode
     outb(0xA1, 0x01);
     
-    outb(0x21, 0xFC);
-    outb(0xA1, 0xFF);
+    // Mask all except timer (0) and keyboard (1)
+    outb(0x21, 0xFC);  // 11111100 - IRQ0 and IRQ1 enabled
+    outb(0xA1, 0xFF);  // All slave IRQs masked
     
-    write_serial("PIC: Initialized - Timer and Keyboard enabled\n");
-}
-
-void pic_enable_timer_irq(void) {
-    uint8_t mask = inb(0x21);
-    mask &= ~(1 << 0);
-    outb(0x21, mask);
-    
-    write_serial("PIC: Timer IRQ0 enabled\n");
+    write_serial("PIC: Initialized\n");
 }

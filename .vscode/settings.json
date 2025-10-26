@@ -30,6 +30,7 @@
         "framebuffer.h": "c",
         "elixir.h": "c",
         "timer.h": "c",
-        "scheduler.h": "c"
+        "scheduler.h": "c",
+        "syscall.h": "c"
     }
 }

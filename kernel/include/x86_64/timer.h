@@ -3,14 +3,9 @@
 
 #include <stdint.h>
 
-void on_irq0(void);
-
-void timer_wait(uint32_t ticks);
-
 void init_timer(void);
-
-void init_timer_interrupts(void);
-
+void on_irq0(void);
+void timer_wait(uint32_t ticks);
 uint64_t get_timer_ticks(void);
 
 static inline void timer_wait_micros(uint32_t microseconds) {

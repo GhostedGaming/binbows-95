@@ -1,9 +1,10 @@
 global isr128
-extern syscall_handler
+extern syscall_handler_c
 
 section .text
+
 isr128:
-    ; Common exception stub style: save registers, call syscall_handler, iretq
+    ; Save all registers
     push rax
     push rbx
     push rcx
@@ -19,28 +20,31 @@ isr128:
     push r13
     push r14
     push r15
-
-    mov ax, ds
-    push rax
-    mov ax, es
-    push rax
-
-    mov ax, 0x10
-    mov ds, ax
-    mov es, ax
-
-    mov rbp, rsp
-    and rsp, ~0xF
-
-    call syscall_handler
-
-    mov rsp, rbp
-
-    pop rax
-    mov es, ax
-    pop rax
-    mov ds, ax
-
+    
+    ; Validate syscall number (in rax)
+    cmp rax, 255
+    jae .invalid
+    
+    ; Set up arguments for syscall_handler_c
+    ; x86-64 calling convention: rdi, rsi, rdx, rcx, r8, r9
+    mov rdi, rax    ; arg1: syscall_number
+    mov rsi, rbx    ; arg2: arg1
+    mov rdx, rcx    ; arg3: arg2
+    mov rcx, r8     ; arg4: arg3
+    mov r8, r9      ; arg5: arg4
+    mov r9, r10     ; arg6: arg5
+    
+    ; Call the C handler
+    call syscall_handler_c
+    
+    ; rax now contains the return value
+    jmp .done
+    
+.invalid:
+    mov rax, -1
+    
+.done:
+    ; Restore all registers (except rax which has return value)
     pop r15
     pop r14
     pop r13
@@ -55,7 +59,9 @@ isr128:
     pop rdx
     pop rcx
     pop rbx
-    pop rax
-
-    add rsp, 0
+    add rsp, 8      ; Skip saved rax
+    
     iretq
+
+section .data
+max_syscalls: dq 255

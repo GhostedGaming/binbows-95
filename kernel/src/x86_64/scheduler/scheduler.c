@@ -3,14 +3,10 @@
 #include <mem.h>
 #include <assert.h>
 #include <util.h>
-#include <stub.h>
 #include <ps2_keyboard.h>
 
-#define STACK_SIZE (16 * 4096)
-#define DEFAULT_TIME_SLICE 3
 #define KERNEL_STACK_SIZE (64 * 1024)
-
-volatile bool scheduler_tick = false;
+#define DEFAULT_TIME_SLICE 3
 
 static scheduler_t scheduler = {0};
 static bool initialized = false;
@@ -35,42 +31,6 @@ void free_process_stack(uint64_t* stack_base) {
 
 void setup_initial_stack(process_t* process) {
     uint64_t* stack = (uint64_t*)((uint8_t*)process->stack_base + KERNEL_STACK_SIZE);
-    
-    if (process->is_user) {
-        uint64_t user_vbase = 0x400000;
-        size_t stack_size = 16 * 4096;
-        uint64_t first_phys = allocate_user_stack(process->pml4_phys, user_vbase, stack_size);
-        if (first_phys == 0) {
-            process->is_user = false;
-        } else {
-            process->user_stack_vaddr = user_vbase;
-            uint64_t user_rsp = user_vbase - 8;
-            uint64_t user_rip = (uint64_t)process->entry_point;
-            
-            *(--stack) = 0x23;
-            *(--stack) = user_rsp;
-            *(--stack) = 0x202;
-            *(--stack) = 0x1B;
-            *(--stack) = user_rip;
-            *(--stack) = 0x202;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            *(--stack) = 0;
-            
-            process->stack_ptr = stack;
-            return;
-        }
-    }
 
     *(--stack) = (uint64_t)process->entry_point;
     *(--stack) = 0x202;
@@ -89,7 +49,6 @@ void setup_initial_stack(process_t* process) {
 
     process->stack_ptr = stack;
 }
-
 void scheduler_init(void) {
     if (initialized) {
         serial_printf("[SCHEDULER] WARNING: Already initialized!\n");
@@ -106,6 +65,10 @@ void scheduler_init(void) {
         return;
     }
 
+    // Get current CR3 (kernel page table)
+    uint64_t cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+
     scheduler.processes[0].pid = 0;
     scheduler.processes[0].state = PROCESS_RUNNING;
     scheduler.processes[0].priority = 0;
@@ -114,10 +77,6 @@ void scheduler_init(void) {
     scheduler.processes[0].stack_base = stack_base;
     scheduler.processes[0].entry_point = NULL;
     scheduler.processes[0].stack_ptr = (uint64_t*)((uint8_t*)stack_base + KERNEL_STACK_SIZE);
-    scheduler.processes[0].is_user = false;
-    
-    uint64_t cr3;
-    asm volatile ("mov %%cr3, %0" : "=r"(cr3));
     scheduler.processes[0].pml4_phys = cr3 & ~0xFFFULL;
 
     scheduler.process_count = 1;
@@ -149,62 +108,37 @@ int create_process(void (*entry_point)(void), uint32_t priority) {
 
     int idx = scheduler.process_count;
 
+    // Find unique PID
     uint32_t pid = scheduler.next_pid;
     while (get_process_by_pid(pid) != NULL) {
         pid++;
         if (pid == 0) pid = 1;
     }
+    
+    // Get current CR3 (all processes share kernel page table)
+    uint64_t cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+
     scheduler.processes[idx].pid = pid;
     scheduler.next_pid = pid + 1;
     if (scheduler.next_pid == 0) scheduler.next_pid = 1;
+    
     scheduler.processes[idx].state = PROCESS_READY;
     scheduler.processes[idx].priority = priority;
     scheduler.processes[idx].time_slice = DEFAULT_TIME_SLICE;
     scheduler.processes[idx].cpu_time_used = 0;
     scheduler.processes[idx].entry_point = entry_point;
     scheduler.processes[idx].stack_base = stack_base;
-
-    uint64_t entry_addr = (uint64_t)(uintptr_t)entry_point;
-    if ((entry_addr & (1ULL << 63)) != 0) {
-        uint64_t cr3;
-        asm volatile ("mov %%cr3, %0" : "=r"(cr3));
-        scheduler.processes[idx].pml4_phys = cr3 & ~0xFFFULL;
-        scheduler.processes[idx].is_user = false;
-    } else {
-        uint64_t pml4 = create_user_pml4();
-        if (pml4 == 0) {
-            serial_printf("[SCHEDULER] WARNING: Failed to create user PML4 for PID=%d\n", scheduler.processes[idx].pid);
-            uint64_t cr3;
-            asm volatile ("mov %%cr3, %0" : "=r"(cr3));
-            pml4 = cr3 & ~0xFFFULL;
-        }
-        scheduler.processes[idx].pml4_phys = pml4;
-        scheduler.processes[idx].is_user = true;
-    }
-
-    if (scheduler.processes[idx].is_user) {
-        uint64_t user_vbase = 0x400000;
-        uint64_t first_phys = allocate_user_stack(scheduler.processes[idx].pml4_phys, user_vbase + 0x1000, 4096);
-        (void)first_phys;
-        uint64_t old_cr3;
-        asm volatile ("mov %%cr3, %0" : "=r"(old_cr3));
-        load_pml4(scheduler.processes[idx].pml4_phys);
-        void *dst = (void *)(user_vbase);
-        for (unsigned int i = 0; i < userspace_stub_len; i++) {
-            ((unsigned char *)dst)[i] = userspace_stub[i];
-        }
-        load_pml4(old_cr3 & ~0xFFFULL);
-        scheduler.processes[idx].entry_point = (void (*)(void))(uintptr_t)user_vbase;
-    }
+    scheduler.processes[idx].pml4_phys = cr3 & ~0xFFFULL;
 
     setup_initial_stack(&scheduler.processes[idx]);
 
     scheduler.process_count++;
 
     serial_printf("[SCHEDULER] Created process PID=%d, priority=%d, entry=%p\n",
-                  scheduler.processes[idx].pid, priority, entry_point);
+                  pid, priority, entry_point);
 
-    return scheduler.processes[idx].pid;
+    return pid;
 }
 
 void terminate_process(uint32_t pid) {
@@ -219,18 +153,16 @@ void terminate_process(uint32_t pid) {
         if (scheduler.processes[i].pid == pid) {
             scheduler.processes[i].state = PROCESS_TERMINATED;
 
-            if (scheduler.processes[i].is_user && scheduler.processes[i].pml4_phys) {
-                destroy_user_mappings(scheduler.processes[i].pml4_phys);
-            }
-
             free_process_stack(scheduler.processes[i].stack_base);
 
+            // Shift processes down
             for (uint32_t j = i; j < scheduler.process_count - 1; j++) {
                 scheduler.processes[j] = scheduler.processes[j + 1];
             }
 
             scheduler.process_count--;
 
+            // Adjust current process index
             if (scheduler.current_process >= scheduler.process_count) {
                 scheduler.current_process = 0;
             } else if (scheduler.current_process > i) {
@@ -303,10 +235,13 @@ static int find_next_process(void) {
     int best_idx = -1;
     uint32_t best_priority = UINT32_MAX;
 
+    // Find ready process with highest priority (lowest number)
     for (uint32_t i = 0; i < scheduler.process_count; i++) {
         uint32_t idx = (current + 1 + i) % scheduler.process_count;
         process_t *p = &scheduler.processes[idx];
+        
         if (p->state != PROCESS_READY) continue;
+        
         if (best_idx == -1 || p->priority < best_priority) {
             best_idx = (int)idx;
             best_priority = p->priority;
@@ -315,6 +250,7 @@ static int find_next_process(void) {
 
     if (best_idx != -1) return best_idx;
     if (scheduler.processes[current].state == PROCESS_RUNNING) return current;
+    
     return 0;
 }
 
@@ -322,36 +258,33 @@ void change_process(void) {
     if (!initialized) return;
     if (scheduler.process_count <= 1) return;
 
-    asm volatile("cli");
+    __asm__ volatile("cli");
 
     process_t* current_proc = &scheduler.processes[scheduler.current_process];
     
+    // Decrement time slice
     if (current_proc->time_slice > 0) {
         current_proc->time_slice--;
         current_proc->cpu_time_used++;
     }
     
+    // If time slice remaining, keep running
     if (current_proc->time_slice > 0 && current_proc->state == PROCESS_RUNNING) {
-        asm volatile("sti");
+        __asm__ volatile("sti");
         return;
     }
 
     int next_idx = find_next_process();
 
-    if (next_idx == -1) {
+    if (next_idx == -1 || (uint32_t)next_idx == scheduler.current_process) {
         current_proc->time_slice = DEFAULT_TIME_SLICE;
-        asm volatile("sti");
-        return;
-    }
-
-    if ((uint32_t)next_idx == scheduler.current_process) {
-        current_proc->time_slice = DEFAULT_TIME_SLICE;
-        asm volatile("sti");
+        __asm__ volatile("sti");
         return;
     }
 
     process_t* next_proc = &scheduler.processes[next_idx];
 
+    // Update process states
     if (current_proc->state == PROCESS_RUNNING) {
         current_proc->state = PROCESS_READY;
     }
@@ -362,21 +295,18 @@ void change_process(void) {
     
     scheduler.current_process = next_idx;
 
-    asm volatile("sti");
+    __asm__ volatile("sti");
 
-    if (next_proc->pml4_phys) {
-        load_pml4(next_proc->pml4_phys);
-    }
-
-    uint64_t cr3_arg = next_proc->pml4_phys;
-    if (next_proc->is_user) cr3_arg |= 1ULL;
-    context_switch(&current_proc->stack_ptr, &next_proc->stack_ptr, cr3_arg);
+    // Context switch (CR3 stays the same for kernel-only)
+    context_switch(&current_proc->stack_ptr, &next_proc->stack_ptr, next_proc->pml4_phys);
 }
 
 void yield(void) {
     process_t* current = get_current_process();
     if (current) {
-        if (current->state == PROCESS_RUNNING) current->state = PROCESS_READY;
+        if (current->state == PROCESS_RUNNING) {
+            current->state = PROCESS_READY;
+        }
         current->time_slice = 0;
     }
     change_process();

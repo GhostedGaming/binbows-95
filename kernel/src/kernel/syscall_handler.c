@@ -1,7 +1,6 @@
 #include <syscall.h>
 #include <framebuffer.h>
 
-// System call handler in C
 uint64_t syscall_handler_c(uint64_t syscall_number, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4, uint64_t arg5) {
     switch (syscall_number) {
         case SYS_FB_PRINT:

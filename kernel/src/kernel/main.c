@@ -8,6 +8,8 @@ extern volatile struct limine_hhdm_request hhdm_request;
 extern volatile struct limine_bootloader_info_request bootloader_request;
 extern HBA_MEM *abar;
 
+extern void call_fb();
+
 void kernel_main(void) {
     if (!memmap_request.response) while (1) asm volatile ("hlt");
     if (!hhdm_request.response) while (1) asm volatile ("hlt");
@@ -16,13 +18,13 @@ void kernel_main(void) {
     enable_sse();
     init_serial();
     init_allocator();
-    serial_printf("Linked List allocator initialized\n");
-
+    
     gdt_init();
     gdt_load();
 
     idt_init();
     install_exceptions();
+    install_syscall();
 
     scheduler_init();
 
@@ -41,30 +43,17 @@ void kernel_main(void) {
     acpi_init();
     apic_init();
 
-    serial_printf("\n=== Formatting Elixir Filesystem ===\n");
-    int format_result = elixir_format(&abar->ports[0], 65536 * 512);
-    if (format_result != 0) {
-        serial_printf("Failed to format Elixir filesystem: %d\n", format_result);
-    } else {
-        serial_printf("Elixir filesystem formatted successfully.\n");
-        elixir_fs_t* fs = elixir_mount(&abar->ports[0]);
-        if (!fs) {
-            serial_printf("Failed to mount Elixir filesystem.\n");
-        } else {
-            serial_printf("Elixir filesystem mounted successfully.\n");
-            elixir_unmount(fs);
-        }
-    }
-
     create_process(test_scheduler, 1);
     create_process(shell_process, 10);
     shell_init();
 
     write_serial("Enabling interrupts...\n");
-    asm volatile ("sti");
+    __asm__ volatile ("sti");
+
+    call_fb();
 
     write_serial("Entering idle loop...\n");
     while (1) {
-        asm volatile ("hlt");
+        __asm__ volatile ("hlt");
     }
 }
