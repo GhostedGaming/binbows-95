@@ -169,12 +169,6 @@ void terminate_process(uint32_t pid) {
                 scheduler.current_process--;
             }
 
-            if (keyboard_process_pid == pid) {
-                disable_keyboard_irq();
-                keyboard_process_pid = 0;
-                serial_printf("[SCHEDULER] Keyboard process terminated: IRQ disabled\n");
-            }
-
             serial_printf("[SCHEDULER] Terminated process PID=%d\n", pid);
             return;
         }

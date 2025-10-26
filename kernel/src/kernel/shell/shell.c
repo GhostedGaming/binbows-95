@@ -9,8 +9,8 @@ volatile uint8_t received_key = 0;
 shell_state_t shell_state;
 
 void shell_init(void) {
-    fb_print("Binbows-95 kernel 9.0", rgb_to_color(100, 200, 255));
-    fb_print("\nType 'help' for a list of commands.\n\n", rgb_to_color(150, 150, 150));
+    fb_print("Binbows-95 kernel 9.0\n", rgb_to_color(100, 200, 255)); // added newline
+    fb_print("Type 'help' for a list of commands.\n\n", rgb_to_color(150, 150, 150));
     memset(&shell_state, 0, sizeof(shell_state_t));
     shell_state.cursor_visible = 1;
 }
@@ -63,6 +63,7 @@ void shell_scroll_up(void) {
 
 void shell_print_color(const char *text, uint32_t color) {
     fb_print(text, color);
+    if (text[strlen(text) - 1] != '\n') fb_print("\n", color); // ensure newline
 }
 
 void shell_printf(const char *format, ...) {
@@ -73,18 +74,22 @@ void shell_printf(const char *format, ...) {
     va_end(args);
     
     fb_print(buffer, 0xFFFFFFFF);
+    if (buffer[strlen(buffer) - 1] != '\n') fb_print("\n", 0xFFFFFFFF); // ensure newline
 }
 
 void shell_print(const char *text) { 
-    fb_print(text, 0xFFFFFFFF); 
+    fb_print(text, 0xFFFFFFFF);
+    if (text[strlen(text) - 1] != '\n') fb_print("\n", 0xFFFFFFFF); // ensure newline
 }
 
 void shell_error(const char *text) {
     fb_print(text, rgb_to_color(255, 100, 100));
+    if (text[strlen(text) - 1] != '\n') fb_print("\n", rgb_to_color(255, 100, 100)); // added newline
 }
 
 void shell_success(const char *text) {
     fb_print(text, rgb_to_color(100, 255, 100));
+    if (text[strlen(text) - 1] != '\n') fb_print("\n", rgb_to_color(100, 255, 100)); // added newline
 }
 
 char *input(char received) {
@@ -134,7 +139,6 @@ char *input(char received) {
 
     return NULL;
 }
-
 
 void shell_backspace(void) {
     if (shell_state.cursor_pos > 0) {

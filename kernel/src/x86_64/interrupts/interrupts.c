@@ -71,25 +71,23 @@ void install_exceptions(void) {
     write_serial("IDT: Exceptions installed\n");
 }
 
-// Install timer interrupt (IRQ0 -> INT 32)
 void init_timer_irq(void) {
     idt_set_entry(32, irq0, 0x8E);
-    write_serial("IDT: Timer IRQ installed\n");
+    IRQ_clear_mask(0);
+    write_serial("IDT: Timer IRQ installed and unmasked\n");
 }
 
-// Install keyboard interrupt (IRQ1 -> INT 33)
 void init_keyboard_irq(void) {
     idt_set_entry(33, irq1, 0x8E);
-    write_serial("IDT: Keyboard IRQ installed\n");
+    IRQ_clear_mask(1);
+    write_serial("IDT: Keyboard IRQ installed and unmasked\n");
 }
 
-// Install syscall handler (INT 128)
 void install_syscall(void) {
-    idt_set_entry(128, isr128, 0x8E);  // 0x8E for kernel-mode only
+    idt_set_entry(128, isr128, 0x8E);
     write_serial("IDT: Syscall handler installed\n");
 }
 
-// Exception handler
 void isr_handler(uint64_t interrupt_number, uint64_t rip) {
     serial_printf("\n=== CPU EXCEPTION %lu ===\n", interrupt_number);
 
@@ -114,15 +112,19 @@ void isr_handler(uint64_t interrupt_number, uint64_t rip) {
     __builtin_unreachable();
 }
 
-// IRQ handler
 void irq_handler(uint64_t irq_number) {
+    static int timer_count = 0;
+    
     switch(irq_number) {
         case 32: // Timer
             on_irq0();
-            change_process();
+            
+            if (timer_count > 100) {
+                change_process();
+            }
             break;
 
-        case 33: // Keyboard
+        case 33:
             keyboard_handler(NULL);
             break;
 
@@ -131,9 +133,8 @@ void irq_handler(uint64_t irq_number) {
             break;
     }
 
-    // Send EOI
     if (irq_number >= 40) {
-        outb(0xA0, 0x20);  // Slave PIC
+        outb(0xA0, 0x20);
     }
-    outb(0x20, 0x20);  // Master PIC
+    outb(0x20, 0x20);
 }

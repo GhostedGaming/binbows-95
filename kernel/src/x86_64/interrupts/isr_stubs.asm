@@ -1,3 +1,5 @@
+[BITS 64]
+
 extern isr_handler
 extern irq_handler
 
@@ -228,6 +230,5 @@ irq_common_stub:
     ; Remove error code and IRQ number from stack
     add rsp, 16
     
-    ; Return from interrupt
-    sti                 ; Re-enable interrupts
+    ; Return from interrupt (iretq automatically restores RFLAGS with IF)
     iretq

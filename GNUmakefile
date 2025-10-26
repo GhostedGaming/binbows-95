@@ -9,7 +9,7 @@ ARCH := x86_64
 QEMUFLAGS := -m 8G -serial stdio -device ac97 -device VGA,xres=1920,yres=1080
 
 # Image name
-override IMAGE_NAME := template-$(ARCH)
+override IMAGE_NAME := binbowsDOS-$(ARCH)
 
 # Host toolchain
 HOST_CC := cc
@@ -40,17 +40,19 @@ ide-image:
 		echo "Creating ide.img (8MB raw disk image for fat12)..."; \
 		qemu-img create -f raw ide.img 8M; \
 		echo "Formatting as FAT12..."; \
-		sudo mkfs.fat -F 12 -v -n "TESTDISK" ide.img ::; \
-		if [ -d test ]; then \
-			echo "Copying test files to ide.img..."; \
-			mmd -i ide.img ::/test 2>/dev/null || true; \
-			for file in test/*; do \
-				if [ -f "$$file" ]; then \
-					echo "Copying $$file..."; \
-					mcopy -i ide.img "$$file" ::/test/; \
-				fi; \
-			done; \
-		fi; \
+		sudo mkfs.fat -F 12 -v -n "TESTDISK" ide.img; \
+	fi
+	@if [ -d test ]; then \
+		echo "Copying test files to ide.img..."; \
+		for file in test/*; do \
+			if [ -f "$$file" ]; then \
+				filename=$$(basename "$$file"); \
+				echo "Copying $$filename..."; \
+				mcopy -i ide.img "$$file" "::$$filename"; \
+			fi; \
+		done; \
+	else \
+		echo "Warning: test directory not found"; \
 	fi
 
 .PHONY: ahci-image
@@ -84,6 +86,7 @@ run-x86_64: clean $(IMAGE_NAME).iso ide-image ahci-image
 	qemu-system-x86_64 \
 		-M pc \
 		$(QEMUFLAGS) \
+		-boot d \
 		-cdrom $(IMAGE_NAME).iso \
 		-drive file=ide.img,format=raw,if=none,id=drive0 \
 		-device ide-hd,drive=drive0,bus=ide.0,unit=0 \

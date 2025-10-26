@@ -81,7 +81,6 @@ void init_keyboard(void) {
     }
 
     if (got_ack) {
-        enable_keyboard_irq();
         keyboard_enabled = true;
         serial_printf("[KBD] Keyboard enabled (ACK received)\n");
     } else {

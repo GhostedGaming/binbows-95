@@ -28,6 +28,7 @@ void parse_command(void) {
     parse_args(shell_state.command_buffer, args, &argc);
     
     if (argc == 0) {
+        shell_state.command_buffer[0] = '\0';
         shell_print_prompt();
         shell_redraw_input();
         return;
@@ -40,12 +41,13 @@ void parse_command(void) {
     
     if (cmd->name) {
         cmd->handler(argc, args);
-        if (strcmp(args[0], "exit") == 0) {
-            return;
-        }
     } else {
-        shell_error("Unknown command");
+        shell_error("Unknown command\n");
         shell_printf("Type 'help' for available commands.\n");
+    }
+    
+    if (strcmp(args[0], "exit") == 0) {
+        return;
     }
     
     shell_state.command_buffer[0] = '\0';

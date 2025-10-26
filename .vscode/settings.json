@@ -31,6 +31,8 @@
         "elixir.h": "c",
         "timer.h": "c",
         "scheduler.h": "c",
-        "syscall.h": "c"
+        "syscall.h": "c",
+        "bexe.h": "c",
+        "serial.h": "c"
     }
 }

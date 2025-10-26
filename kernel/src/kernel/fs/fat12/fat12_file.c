@@ -145,7 +145,6 @@ uint8_t* fat12_read_file(uint8_t drive, const char *filename, uint32_t *size_out
     return NULL;
 }
 
-// Optional: Keep the old function for backward compatibility
 bool fat12_read_file_to_buffer(uint8_t drive, const char *filename, uint8_t *buffer, uint32_t *size_out) {
     uint8_t *file_data = fat12_read_file(drive, filename, size_out);
     if (!file_data) {
@@ -282,45 +281,15 @@ char *fat12_read_files(uint8_t drive) {
             name[name_idx] = '\0';
             
             char temp[64];
-            int len = 0;
             
-            strcpy(temp, "Name: ");
-            strcat(temp, name);
-            strcat(temp, " Size: ");
-            
-            char size_str[16];
-            uint32_t size = entry->file_size;
-            int size_len = 0;
-            
-            if (size == 0) {
-                size_str[size_len++] = '0';
-            } else {
-                char rev_str[16];
-                int rev_len = 0;
-                while (size > 0) {
-                    rev_str[rev_len++] = '0' + (size % 10);
-                    size /= 10;
-                }
-                for (int x = 0; x < rev_len; x++) {
-                    size_str[size_len++] = rev_str[rev_len - 1 - x];
-                }
-            }
-            size_str[size_len] = '\0';
-            
-            strcat(temp, size_str);
-            strcat(temp, " bytes\n");
-            
-            len = strlen(temp);
-            
+            size_t len = strlen(temp);
             if (used + len >= remaining) {
-                strcat(file_list, "[TRUNCATED - too many files]\n");
+                strcat(file_list, "[TRUNCATED]\n");
                 return file_list;
             }
             
             strcat(file_list, temp);
             used += len;
-            
-            serial_printf("File: %s Size: %u bytes\n", name, entry->file_size);
         }
     }
     

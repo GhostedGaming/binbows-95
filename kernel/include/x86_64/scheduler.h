@@ -21,13 +21,14 @@ typedef struct {
     uint32_t priority;
     uint64_t* stack_ptr;
     uint64_t* stack_base;
-    uint64_t pml4_phys; // physical address of this process's PML4
-    bool is_user;
+    uint64_t pml4_phys;
     uint64_t user_stack_vaddr;
     uint32_t time_slice;
     uint32_t cpu_time_used;
     void (*entry_point)(void);
+    uint32_t exit_code;
 } process_t;
+
 
 typedef struct {
     process_t processes[MAX_PROCESS_COUNT];

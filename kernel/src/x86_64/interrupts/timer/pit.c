@@ -7,6 +7,7 @@ static volatile uint64_t timer_ticks = 0;
 
 void on_irq0(void) {
     timer_ticks++;
+    serial_printf(".");
 }
 
 void timer_wait(uint32_t ticks) {
