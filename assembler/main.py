@@ -1,6 +1,7 @@
 import sys
 import struct
 import re
+import os
 
 # =========================
 # Opcodes
@@ -8,6 +9,7 @@ import re
 MNEMONIC_TO_OPCODE = {
     # Data movement
     "mv":   0x01, "mov":  0x01,
+    "lea":  0x1A,
 
     # Arithmetic
     "ad":   0x02, "add":  0x02,
@@ -15,7 +17,11 @@ MNEMONIC_TO_OPCODE = {
     "mu":   0x04, "mul":  0x04,
     "di":   0x05, "div":  0x05,
     "inc":  0x12,
+    "dec":  0x13,
     "cmp":  0x10, "xor":  0x11,
+    "and":  0x14, "or":   0x15,
+    "not":  0x16, "neg":  0x17,
+    "shl":  0x18, "shr":  0x19,
 
     # Control flow / jumps
     "jmp":  0x06,
@@ -39,6 +45,15 @@ MNEMONIC_TO_OPCODE = {
     "int":      0x50,
     "syscall":  0x50,
     "nop":      0x90,
+    
+    # Beginner-friendly aliases
+    "print":    0x50,  # Maps to syscall
+    "exit":     0x40,  # Maps to hlt
+    "goto":     0x06,  # Maps to jmp
+    "if_equal": 0x07,  # Maps to je
+    "if_not_equal": 0x08,  # Maps to jne
+    "if_less":  0x09,  # Maps to jl
+    "if_greater": 0x0A,  # Maps to jg
 }
 
 # =========================
@@ -51,9 +66,20 @@ REGISTERS = {
     "r8": 0x08, "r9": 0x09, "r10": 0x0A, "r11": 0x0B,
     "r12": 0x0C, "r13": 0x0D, "r14": 0x0E, "r15": 0x0F,
 
+    # 32-bit registers
+    "eax": 0x20, "ebx": 0x21, "ecx": 0x22, "edx": 0x23,
+    "esp": 0x24, "ebp": 0x25, "esi": 0x26, "edi": 0x27,
+
+    # 16-bit registers
+    "ax": 0x30, "bx": 0x31, "cx": 0x32, "dx": 0x33,
+    "sp": 0x34, "bp": 0x35, "si": 0x36, "di": 0x37,
+
     # 8-bit registers
     "al": 0x10, "bl": 0x11, "cl": 0x12, "dl": 0x13,
     "ah": 0x14, "bh": 0x15, "ch": 0x16, "dh": 0x17,
+    
+    # Beginner-friendly aliases
+    "a": 0x00, "b": 0x01, "c": 0x02, "d": 0x03,
 }
 
 # =========================
@@ -75,13 +101,12 @@ SYSCALLS = {
 
 # =========================
 # Instruction Encoding Modes
-# (extensions added for memory operands)
 # =========================
-MODE_REG_REG = 0x00  # Both operands are registers
-MODE_REG_IMM = 0x01  # Dest is register, source is immediate
-MODE_MEM_IMM = 0x02  # Dest is memory, source is immediate
-MODE_MEM_REG = 0x03  # Dest is memory, source is register
-MODE_REG_MEM = 0x04  # Dest is register, source is memory
+MODE_REG_REG = 0x00
+MODE_REG_IMM = 0x01
+MODE_MEM_IMM = 0x02
+MODE_MEM_REG = 0x03
+MODE_REG_MEM = 0x04
 
 # =========================
 # Advanced Assembler
@@ -94,8 +119,6 @@ class Assembler:
         self.labels = {}
         self.data_labels = {}
         self.bss_labels = {}
-        # unresolved_refs: list of tuples (offset, label, ref_type, size_bytes)
-        # ref_type 'abs' means 4-byte absolute address (patched as 4 bytes)
         self.unresolved_refs = []
         self.current_section = "text"
         self.constants = {}
@@ -103,6 +126,7 @@ class Assembler:
         self.verbose = verbose
         self.current_file = ""
         self.current_line = 0
+        self.include_stack = []
 
     def log(self, msg):
         if self.verbose:
@@ -118,25 +142,28 @@ class Assembler:
     def eval_expression(self, expr):
         expr = expr.strip()
 
+        # Check syscalls
         if expr in SYSCALLS:
             return SYSCALLS[expr]
 
+        # Check constants
         if expr in self.constants:
             return self.constants[expr]
 
-        # Try direct integer parsing first (handles 0x, 0b, 0o formats)
+        # Try direct integer parsing
         try:
             return int(expr, 0)
         except:
             pass
 
-        # Replace constants with their values
+        # Replace constants with values
         for const_name, const_val in self.constants.items():
-            expr = expr.replace(const_name, str(const_val))
+            expr = re.sub(r'\b' + re.escape(const_name) + r'\b', str(const_val), expr)
 
-        # Try evaluation for expressions
+        # Try evaluation
         try:
-            return int(eval(expr))
+            # Safe eval with limited namespace
+            return int(eval(expr, {"__builtins__": {}}, {}))
         except:
             return None
 
@@ -144,16 +171,11 @@ class Assembler:
     # Size / Directive Detection
     # -------------------------
     def is_size_directive(self, op):
-        """
-        Detects leading size directives like: db, dw, dd, dq, byte, word, dword, qword, 'byte ptr'
-        Returns canonical size token (e.g., 'db', 'dw', 'dd', 'dq', 'byte') or None.
-        """
         op = op.strip()
         m = re.match(r'^(db|dw|dd|dq|byte\s+ptr|byte|word|dword|qword)\b', op, re.IGNORECASE)
         if not m:
             return None
         token = m.group(1).lower()
-        # Normalize some human-friendly synonyms
         if token == 'word': token = 'dw'
         if token == 'dword': token = 'dd'
         if token == 'qword': token = 'dq'
@@ -161,10 +183,6 @@ class Assembler:
         return token
 
     def size_to_bytes(self, size_token):
-        """
-        Map size token to byte length for immediates/displacements.
-        'byte' or 'db' -> 1, 'dw' -> 2, 'dd' -> 4, 'dq' -> 8
-        """
         if not size_token:
             return None
         s = size_token.lower()
@@ -184,7 +202,7 @@ class Assembler:
     def is_register(self, op):
         op = op.strip().lower()
         if op.startswith('[') and op.endswith(']'):
-            op = op[1:-1].strip()
+            return False
         return op in REGISTERS
 
     def get_register_code(self, op):
@@ -195,33 +213,30 @@ class Assembler:
 
     def is_memory_operand(self, op):
         op = op.strip()
-        # memory operands are bracketed forms; size directives may precede them
         size = self.is_size_directive(op)
         if size:
-            # strip the size directive before checking
             op = re.sub(r'^(db|dw|dd|dq|byte\s+ptr|byte|word|dword|qword)\b\s*', '', op, flags=re.IGNORECASE)
         return op.startswith('[') and op.endswith(']')
 
     def is_number(self, op):
         op = op.strip()
-        # allow negative numbers and hex, also character literals in single or double quotes
         if not op:
             return False
         if (op.startswith("'") and op.endswith("'")) or (op.startswith('"') and op.endswith('"')):
             return True
-        if op.startswith('-'):
+        if op.startswith('-') or op.startswith('+'):
             op = op[1:]
-        return op.startswith('0x') or op.isdigit()
+        return op.startswith('0x') or op.startswith('0b') or op.startswith('0o') or op.isdigit()
 
     def parse_number(self, op):
         s = op.strip()
-        # Character literal handling: 'm' or "m" or escaped sequences like '\n'
+        
+        # Character literal
         if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
             try:
                 b = self.parse_string(s)
                 if len(b) == 1:
                     return b[0]
-                # If it's a string of length >1, we don't treat as a single immediate number
                 return None
             except:
                 return None
@@ -229,7 +244,7 @@ class Assembler:
         val = self.eval_expression(s)
         if val is not None:
             return val
-        # If eval_expression couldn't parse (maybe a label), return None
+            
         try:
             return int(s, 0)
         except:
@@ -239,30 +254,58 @@ class Assembler:
         if (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'")):
             s = s[1:-1]
 
-        # handle common escapes
-        s = s.replace('\\\\', '\\')
+        # Handle escape sequences
+        s = s.replace('\\\\', '\x00')  # Temporary placeholder
         s = s.replace('\\n', '\n')
         s = s.replace('\\r', '\r')
         s = s.replace('\\t', '\t')
         s = s.replace('\\0', '\0')
+        s = s.replace('\\a', '\a')
+        s = s.replace('\\b', '\b')
+        s = s.replace('\\f', '\f')
+        s = s.replace('\\v', '\v')
+        s = s.replace('\\"', '"')
+        s = s.replace("\\'", "'")
+        s = s.replace('\x00', '\\')  # Restore backslash
+        
         return s.encode('utf-8')
 
-    # Parses a memory operand like "[rbx + rsi + 4]" or "[rbx]" or "[rbx + 8]" or "[label]"
-    # Returns dict: { 'base': reg_code or None, 'index': reg_code or None, 'disp': int or label or None }
     def parse_memory_operand(self, raw_mem):
-        assert raw_mem.startswith('[') and raw_mem.endswith(']')
+        if not (raw_mem.startswith('[') and raw_mem.endswith(']')):
+            self.error(f"Invalid memory operand: {raw_mem}")
         inner = raw_mem[1:-1].strip()
-        # Split by '+' handling whitespace
-        parts = [p.strip() for p in inner.split('+') if p.strip()]
+        
+        # Handle negative numbers and subtraction
+        parts = []
+        current = ""
+        i = 0
+        while i < len(inner):
+            if inner[i] == '+':
+                if current.strip():
+                    parts.append(current.strip())
+                current = ""
+                i += 1
+            elif inner[i] == '-' and (i == 0 or inner[i-1] in '+'):
+                # Start of negative number
+                current += '-'
+                i += 1
+            else:
+                current += inner[i]
+                i += 1
+        if current.strip():
+            parts.append(current.strip())
+
         base = None
         index = None
         disp = 0
         disp_label = None
 
         for p in parts:
-            # If it's a register
+            p = p.strip()
+            if not p:
+                continue
+                
             if p.lower() in REGISTERS:
-                # If base not set -> base, else -> index
                 if base is None:
                     base = REGISTERS[p.lower()]
                 elif index is None:
@@ -270,15 +313,14 @@ class Assembler:
                 else:
                     self.error(f"Too many registers in memory operand: {raw_mem}")
             else:
-                # Try parse number or expression
                 num = self.parse_number(p)
                 if num is not None:
                     disp += num
                 else:
-                    # treat as label/displacement symbol
                     if disp_label is not None:
-                        self.error(f"Multiple labels/unknown parts in memory operand: {raw_mem}")
-                    disp_label = p  # will be resolved later
+                        self.error(f"Multiple labels in memory operand: {raw_mem}")
+                    disp_label = p
+
         result = {
             'base': base if base is not None else 0xFF,
             'index': index if index is not None else 0xFF,
@@ -301,6 +343,8 @@ class Assembler:
                 self.error("Reserve directives (resb/resw/resd/resq) only allowed in .bss section")
             multiplier = {'resb':1,'resw':2,'resd':4,'resq':8}[directive]
             count = self.parse_number(operands.strip())
+            if count is None:
+                self.error(f"Invalid count for {directive}: {operands}")
             self.bss_size += count * multiplier
             return
 
@@ -348,13 +392,20 @@ class Assembler:
         current = ""
         in_string = False
         quote_char = None
+        bracket_depth = 0
 
         for char in operands:
             if char in ('"', "'") and (not in_string or char == quote_char):
                 in_string = not in_string
                 quote_char = char if in_string else None
                 current += char
-            elif char == ',' and not in_string:
+            elif char == '[' and not in_string:
+                bracket_depth += 1
+                current += char
+            elif char == ']' and not in_string:
+                bracket_depth -= 1
+                current += char
+            elif char == ',' and not in_string and bracket_depth == 0:
                 if current.strip():
                     result.append(current.strip())
                 current = ""
@@ -379,6 +430,47 @@ class Assembler:
             self.error(f"Invalid EQU value: {value}")
         self.constants[name] = val
         self.log(f"Constant '{name}' = {self.constants[name]}")
+
+    def handle_include(self, line):
+        parts = line.split(None, 1)
+        if len(parts) < 2:
+            self.error("%include requires a filename")
+        
+        filename = parts[1].strip()
+        # Remove quotes if present
+        if (filename.startswith('"') and filename.endswith('"')) or \
+           (filename.startswith("'") and filename.endswith("'")):
+            filename = filename[1:-1]
+        
+        # Check for circular includes
+        if filename in self.include_stack:
+            self.error(f"Circular include detected: {filename}")
+        
+        # Try to find the file
+        if not os.path.exists(filename):
+            # Try relative to current file
+            if self.current_file:
+                base_dir = os.path.dirname(self.current_file)
+                alt_path = os.path.join(base_dir, filename)
+                if os.path.exists(alt_path):
+                    filename = alt_path
+                else:
+                    self.error(f"Include file not found: {filename}")
+            else:
+                self.error(f"Include file not found: {filename}")
+        
+        self.log(f"Including file: {filename}")
+        self.include_stack.append(filename)
+        
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                old_file = self.current_file
+                old_line = self.current_line
+                self.parse_file(f.read(), filename)
+                self.current_file = old_file
+                self.current_line = old_line
+        finally:
+            self.include_stack.pop()
 
     def handle_macro(self, lines, start_idx):
         parts = lines[start_idx].split()
@@ -414,48 +506,87 @@ class Assembler:
         expanded = []
         for line in macro['body']:
             for i, arg in enumerate(args):
-                line = line.replace(f'%{i+1}', arg)
+                # Use word boundary replacement to avoid partial matches
+                line = re.sub(r'%' + str(i+1) + r'\b', arg, line)
             expanded.append(line)
 
         return expanded
 
     # -------------------------
+    # Beginner Syntax Handler
+    # -------------------------
+    def handle_beginner_syntax(self, line):
+        """Convert beginner-friendly syntax to standard assembly"""
+        line_lower = line.lower().strip()
+        
+        # ARRAY name[size] or ARRAY name[size] = {values}
+        if line_lower.startswith('array '):
+            match = re.match(r'array\s+(\w+)\[(\d+)\](?:\s*=\s*\{([^}]+)\})?', line, re.IGNORECASE)
+            if match:
+                name, size, values = match.groups()
+                size = int(size)
+                
+                if values:
+                    # Array with initialization: array nums[5] = {1, 2, 3, 4, 5}
+                    vals = [v.strip() for v in values.split(',')]
+                    lines = [".data"]
+                    lines.append(f"{name}: dd " + ", ".join(vals))
+                    # Pad with zeros if needed
+                    if len(vals) < size:
+                        lines.append(f"dd " + ", ".join(["0"] * (size - len(vals))))
+                    return "\n".join(lines)
+                else:
+                    # Uninitialized array: array buffer[100]
+                    return f".bss\n{name}: resd {size}"
+        
+        # SET variable TO value (case insensitive, flexible spacing)
+        if ' to ' in line_lower:
+            match = re.match(r'set\s+(.+?)\s+to\s+(.+)', line, re.IGNORECASE)
+            if match:
+                var, val = match.groups()
+                return f"mov {var.strip()}, {val.strip()}"
+        
+        # PRINT string/variable
+        if line_lower.startswith('print '):
+            rest = line[6:].strip()
+            return f"mov rax, 1\nmov rbx, {rest}\nsyscall"
+        
+        # LET variable = value (alternative to SET)
+        if '=' in line and not line_lower.startswith('mov'):
+            match = re.match(r'let\s+(\S+)\s*=\s*(.+)', line, re.IGNORECASE)
+            if match:
+                var, val = match.groups()
+                return f"mov {var.strip()}, {val.strip()}"
+            # Handle simple assignment without LET
+            match = re.match(r'(\w+)\s*=\s*(.+)', line, re.IGNORECASE)
+            if match and not any(line_lower.startswith(x) for x in ['mov', 'add', 'sub', 'mul', 'div', 'cmp', 'and', 'or', 'xor', 'array']):
+                var, val = match.groups()
+                return f"mov {var.strip()}, {val.strip()}"
+        
+        return None
+
+    # -------------------------
     # Instruction Encoding
     # -------------------------
     def encode_two_operand_instruction(self, opcode, raw_op1, raw_op2):
-        """
-        Encode instructions with two operands (MV, ADD, SUB, MUL, DIV, CMP, XOR)
-        Extended to handle register-register, reg-imm, reg-mem, mem-reg, mem-imm.
-        Encoding layout (simple custom format for this assembler):
-        [OPCODE][MODE][...operand bytes...]
-
-        Operand encodings used here:
-         - Register: single byte register code
-         - Immediate: little-endian integer with size depending on context (1/2/4/8 bytes)
-         - Memory: base (1 byte, 0xFF if none), index (1 byte, 0xFF if none), disp (4 bytes), disp can be 0 or patched if a label
-        """
-        # First detect and strip size directives from operands
         size1 = self.is_size_directive(raw_op1)
         size2 = self.is_size_directive(raw_op2)
 
         op1 = raw_op1.strip()
         op2 = raw_op2.strip()
 
-        # Strip leading size directive tokens for classification (we'll respect any provided for immediates/memory)
         if size1:
             op1 = re.sub(r'^(db|dw|dd|dq|byte\s+ptr|byte|word|dword|qword)\b\s*', '', op1, flags=re.IGNORECASE).strip()
         if size2:
             op2 = re.sub(r'^(db|dw|dd|dq|byte\s+ptr|byte|word|dword|qword)\b\s*', '', op2, flags=re.IGNORECASE).strip()
 
-        self.log(f"Encoding two-operand: opcode=0x{opcode:02X}, op1='{raw_op1}'->'{op1}', op2='{raw_op2}'->'{op2}', size1={size1}, size2={size2}")
+        self.log(f"Encoding two-operand: opcode=0x{opcode:02X}, op1='{raw_op1}'->'{op1}', op2='{raw_op2}'->'{op2}'")
 
-        # If destination is register (common path)
         if self.is_register(op1):
             dst_reg = self.get_register_code(op1)
             self.code.append(opcode)
             self.code.append(dst_reg)
 
-            # if source is register
             if self.is_register(op2):
                 self.code.append(MODE_REG_REG)
                 src_reg = self.get_register_code(op2)
@@ -463,34 +594,22 @@ class Assembler:
                 self.log(f"Encoded: REG[{dst_reg}] <- REG[{src_reg}]")
                 return
 
-            # if source is memory
             if self.is_memory_operand(raw_op2) or self.is_memory_operand(op2):
-                # reg <- mem
                 self.code.append(MODE_REG_MEM)
-                mem_token = op2 if self.is_memory_operand(op2) else op2
-                if self.is_size_directive(raw_op2):
-                    mem_size = self.is_size_directive(raw_op2)
-                else:
-                    mem_size = size2
+                mem_token = raw_op2 if self.is_memory_operand(raw_op2) else op2
                 mem = self.parse_memory_operand(mem_token)
-                # encode memory: base(1), index(1), disp(4)
                 self.code.append(mem['base'])
                 self.code.append(mem['index'])
-                # displacement (4 bytes) - might be immediate or label
                 if mem['disp_label']:
-                    # record unresolved ref to be patched (4 bytes)
                     patch_offset = len(self.code)
                     self.unresolved_refs.append((patch_offset, mem['disp_label'], 'abs', 4))
                     self.code.extend(b'\x00\x00\x00\x00')
-                    self.log(f"Unresolved memory displacement label '{mem['disp_label']}' at offset {patch_offset}")
                 else:
-                    self.code.extend(struct.pack("<I", mem['disp'] & 0xFFFFFFFF))
-                self.log(f"Encoded: REG[{dst_reg}] <- MEM(base={mem['base']}, index={mem['index']}, disp={mem['disp']})")
+                    self.code.extend(struct.pack("<i", mem['disp']))
+                self.log(f"Encoded: REG[{dst_reg}] <- MEM")
                 return
 
-            # else source is immediate or label
             self.code.append(MODE_REG_IMM)
-            # determine immediate size: prefer explicit size token on source, else default 4 bytes
             imm_size = self.size_to_bytes(size2) or 4
             if self.is_number(op2):
                 imm = self.parse_number(op2)
@@ -504,52 +623,45 @@ class Assembler:
                     self.code.extend(struct.pack("<I", imm & 0xFFFFFFFF))
                 elif imm_size == 8:
                     self.code.extend(struct.pack("<Q", imm & 0xFFFFFFFFFFFFFFFF))
-                self.log(f"Encoded: REG[{dst_reg}] <- IMM 0x{imm:X} ({imm_size} bytes)")
+                self.log(f"Encoded: REG[{dst_reg}] <- IMM 0x{imm:X}")
             else:
-                # label reference: leave placeholder and record for later patching as 4 bytes
                 patch_offset = len(self.code)
                 self.unresolved_refs.append((patch_offset, op2, 'abs', 4))
                 self.code.extend(b'\x00\x00\x00\x00')
-                self.log(f"Unresolved reference to '{op2}' at offset {patch_offset} (dest reg imm)")
+                self.log(f"Unresolved reference to '{op2}'")
             return
 
-        # If destination is memory operand (support mem, reg and mem, imm)
         if self.is_memory_operand(raw_op1) or self.is_memory_operand(op1):
             self.code.append(opcode)
-            mem_token = op1 if self.is_memory_operand(op1) else op1
+            mem_token = raw_op1 if self.is_memory_operand(raw_op1) else op1
             mem = self.parse_memory_operand(mem_token)
-            # if source is register
+            
             if self.is_register(op2):
                 self.code.append(MODE_MEM_REG)
-                # encode memory then register
                 self.code.append(mem['base'])
                 self.code.append(mem['index'])
                 if mem['disp_label']:
                     patch_offset = len(self.code)
                     self.unresolved_refs.append((patch_offset, mem['disp_label'], 'abs', 4))
                     self.code.extend(b'\x00\x00\x00\x00')
-                    self.log(f"Unresolved memory displacement label '{mem['disp_label']}' at offset {patch_offset}")
                 else:
-                    self.code.extend(struct.pack("<I", mem['disp'] & 0xFFFFFFFF))
+                    self.code.extend(struct.pack("<i", mem['disp']))
                 src_reg = self.get_register_code(op2)
                 self.code.append(src_reg)
-                self.log(f"Encoded: MEM(base={mem['base']},index={mem['index']},disp={mem['disp']}) <- REG[{src_reg}]")
+                self.log(f"Encoded: MEM <- REG[{src_reg}]")
                 return
 
-            # source is immediate or label
             if self.is_number(op2) or (not self.is_register(op2) and not self.is_memory_operand(op2)):
                 self.code.append(MODE_MEM_IMM)
-                # encode memory operand first
                 self.code.append(mem['base'])
                 self.code.append(mem['index'])
                 if mem['disp_label']:
                     patch_offset = len(self.code)
                     self.unresolved_refs.append((patch_offset, mem['disp_label'], 'abs', 4))
                     self.code.extend(b'\x00\x00\x00\x00')
-                    self.log(f"Unresolved memory displacement label '{mem['disp_label']}' at offset {patch_offset}")
                 else:
-                    self.code.extend(struct.pack("<I", mem['disp'] & 0xFFFFFFFF))
-                # immediate size: prefer explicit size on destination or source, else default 4
+                    self.code.extend(struct.pack("<i", mem['disp']))
+                
                 imm_size = self.size_to_bytes(size1) or self.size_to_bytes(size2) or 4
                 if self.is_number(op2):
                     imm = self.parse_number(op2)
@@ -563,27 +675,20 @@ class Assembler:
                         self.code.extend(struct.pack("<I", imm & 0xFFFFFFFF))
                     elif imm_size == 8:
                         self.code.extend(struct.pack("<Q", imm & 0xFFFFFFFFFFFFFFFF))
-                    self.log(f"Encoded: MEM[...] <- IMM 0x{imm:X} ({imm_size} bytes)")
+                    self.log(f"Encoded: MEM <- IMM 0x{imm:X}")
                 else:
-                    # label reference as immediate -> patch 4 bytes
                     patch_offset = len(self.code)
                     self.unresolved_refs.append((patch_offset, op2, 'abs', 4))
                     self.code.extend(b'\x00\x00\x00\x00')
-                    self.log(f"Unresolved immediate reference to '{op2}' at offset {patch_offset} (mem imm)")
+                    self.log(f"Unresolved reference to '{op2}'")
                 return
 
-        # If we get here, unsupported operand combination
         self.error(f"Unsupported operand combination: {raw_op1}, {raw_op2}")
 
     def encode_one_operand_instruction(self, opcode, raw_op):
-        """
-        Encode instructions with one operand (PUSH, POP, JMP, CALL, etc.)
-        This supports register, immediate, or label.
-        """
         op = raw_op.strip()
         self.code.append(opcode)
 
-        # Size directives on single operands (e.g., 'byte ptr [rax]') aren't meaningful here except for memory, so strip them
         size = self.is_size_directive(op)
         if size:
             op = re.sub(r'^(db|dw|dd|dq|byte\s+ptr|byte|word|dword|qword)\b\s*', '', op, flags=re.IGNORECASE).strip()
@@ -593,19 +698,16 @@ class Assembler:
             self.code.append(reg)
             self.log(f"Encoded: single operand REG[{reg}]")
         elif self.is_memory_operand(op):
-            # PUSH/POP memory or JMP mem as label? For simplicity treat bracketed memory as memory operand:
             mem = self.parse_memory_operand(op)
-            # encode memory as base(1), index(1), disp(4)
             self.code.append(mem['base'])
             self.code.append(mem['index'])
             if mem['disp_label']:
                 patch_offset = len(self.code)
                 self.unresolved_refs.append((patch_offset, mem['disp_label'], 'abs', 4))
                 self.code.extend(b'\x00\x00\x00\x00')
-                self.log(f"Unresolved memory displacement label '{mem['disp_label']}' at offset {patch_offset}")
             else:
-                self.code.extend(struct.pack("<I", mem['disp'] & 0xFFFFFFFF))
-            self.log(f"Encoded: single operand MEM(base={mem['base']},index={mem['index']},disp={mem['disp']})")
+                self.code.extend(struct.pack("<i", mem['disp']))
+            self.log(f"Encoded: single operand MEM")
         elif self.is_number(op):
             imm = self.parse_number(op)
             if imm is None:
@@ -613,12 +715,10 @@ class Assembler:
             self.code.extend(struct.pack("<I", imm & 0xFFFFFFFF))
             self.log(f"Encoded: single operand IMM 0x{imm:X}")
         else:
-            # Label reference
             patch_offset = len(self.code)
             self.unresolved_refs.append((patch_offset, op, 'abs', 4))
             self.code.extend(b'\x00\x00\x00\x00')
-            self.log(f"Unresolved reference to '{op}' at offset {patch_offset}")
-            # done
+            self.log(f"Unresolved reference to '{op}'")
 
     # -------------------------
     # Parse Line
@@ -628,6 +728,17 @@ class Assembler:
         if not line:
             return None
 
+        # Check for beginner syntax
+        beginner = self.handle_beginner_syntax(line)
+        if beginner:
+            for bline in beginner.split('\n'):
+                self.parse_line(bline)
+            return None
+
+        if line.startswith('%include'):
+            self.handle_include(line)
+            return None
+
         if line.startswith('%'):
             return line
 
@@ -635,7 +746,8 @@ class Assembler:
             self.handle_equ(line)
             return None
 
-        if line.startswith('.'):
+        # Check for section directives
+        if line.startswith('.') and ':' not in line:
             section = line.lower().strip('.')
             if section in ("text", "data", "bss"):
                 self.current_section = section
@@ -663,10 +775,16 @@ class Assembler:
             line = rest
 
         if self.current_section in ("data", "bss"):
-            parts = line.split(None, 1)
-            directive = parts[0].lower()
-            operands = parts[1] if len(parts) > 1 else ""
-            self.parse_data_directive(directive, operands)
+            if ' ' in line or '\t' in line:
+                parts = line.split(None, 1)
+                directive = parts[0].lower()
+                operands = parts[1] if len(parts) > 1 else ""
+                
+                if directive in ('db', 'dw', 'dd', 'dq', 'byte', 'word', 'dword', 'qword',
+                                 'resb', 'resw', 'resd', 'resq'):
+                    self.parse_data_directive(directive, operands)
+                else:
+                    self.error(f"Unknown data directive: {directive}")
             return None
 
         parts = line.split()
@@ -685,33 +803,26 @@ class Assembler:
         opcode = MNEMONIC_TO_OPCODE[mnemonic]
 
         # No operand instructions
-        if mnemonic in ("ret", "hlt", "nop"):
+        if mnemonic in ("ret", "hlt", "nop", "exit"):
             self.code.append(opcode)
             self.log(f"Encoded: {mnemonic}")
             return None
 
         # INT/SYSCALL
-        if mnemonic in ("int", "syscall"):
-            self.code.append(opcode)  # Always append the INT opcode (0x50)
+        if mnemonic in ("int", "syscall", "print"):
+            self.code.append(opcode)
 
             if not operands:
-                if mnemonic == "syscall":
-                    # Bare "syscall" defaults to int 0x80
+                if mnemonic in ("syscall", "print"):
                     self.code.append(0x80)
-                    self.log(f"Encoded: syscall -> int 0x80")
+                    self.log(f"Encoded: {mnemonic} -> int 0x80")
                 else:
-                    self.error(f"int requires an operand (e.g., 'int 0x80')")
+                    self.error(f"int requires an operand")
             else:
-                # Parse the operand - could be a number or a syscall constant
                 if operands in SYSCALLS:
-                    # It's a syscall constant like SYS_FB_PRINT
-                    # IMPORTANT: Don't encode the syscall number here!
-                    # The syscall number should be loaded into RAX by the user
-                    # Just generate int 0x80
                     self.code.append(0x80)
-                    self.log(f"Encoded: {mnemonic} {operands} -> int 0x80 (syscall number should be in RAX)")
+                    self.log(f"Encoded: {mnemonic} {operands} -> int 0x80")
                 else:
-                    # It's a numeric interrupt number like 0x80 or 128
                     val = self.parse_number(operands)
                     if val is None:
                         self.error(f"Invalid interrupt number: {operands}")
@@ -726,13 +837,16 @@ class Assembler:
         ops = self.split_operands(operands)
 
         # Two-operand instructions
-        if mnemonic in ("mv", "mov", "ad", "add", "su", "sub", "mu", "mul", "di", "div", "cmp", "xor"):
+        if mnemonic in ("mv", "mov", "ad", "add", "su", "sub", "mu", "mul", "di", "div", 
+                        "cmp", "xor", "and", "or", "shl", "shr", "lea"):
             if len(ops) != 2:
                 self.error(f"{mnemonic} requires exactly 2 operands")
             self.encode_two_operand_instruction(opcode, ops[0], ops[1])
 
         # One-operand instructions
-        elif mnemonic in ("push", "pop", "jmp", "je", "jz", "jne", "jnz", "jl", "jb", "jg", "ja", "jle", "jbe", "jge", "jae", "call", "inc"):
+        elif mnemonic in ("push", "pop", "jmp", "je", "jz", "jne", "jnz", "jl", "jb", 
+                          "jg", "ja", "jle", "jbe", "jge", "jae", "call", "inc", "dec",
+                          "not", "neg", "goto", "if_equal", "if_not_equal", "if_less", "if_greater"):
             if len(ops) != 1:
                 self.error(f"{mnemonic} requires exactly 1 operand")
             self.encode_one_operand_instruction(opcode, ops[0])
@@ -795,7 +909,7 @@ class Assembler:
             else:
                 self.error(f"Undefined label: {label}")
 
-            # Write patch: support 1/2/4/8 bytes (but unresolved_refs uses 4 by default)
+            # Write patch
             if size_bytes == 1:
                 self.code[offset:offset+1] = struct.pack("<B", addr & 0xFF)
             elif size_bytes == 2:
@@ -829,25 +943,60 @@ class Assembler:
 
         if self.verbose:
             print(f"\nCode section hex dump:")
-            for i in range(0, min(len(self.code), 64), 16):
+            for i in range(0, min(len(self.code), 128), 16):
                 hex_str = ' '.join(f'{b:02x}' for b in self.code[i:i+16])
                 print(f"  {i:04x}: {hex_str}")
 
             if len(self.data) > 0:
                 print(f"\nData section hex dump:")
-                for i in range(0, min(len(self.data), 64), 16):
+                for i in range(0, min(len(self.data), 128), 16):
                     hex_str = ' '.join(f'{b:02x}' for b in self.data[i:i+16])
                     ascii_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in self.data[i:i+16])
                     print(f"  {i:04x}: {hex_str:48s} | {ascii_str}")
+
+            if self.labels:
+                print(f"\nText labels:")
+                for label, addr in sorted(self.labels.items(), key=lambda x: x[1]):
+                    print(f"  {label:20s} = 0x{addr:04x}")
+            
+            if self.data_labels:
+                print(f"\nData labels:")
+                for label, addr in sorted(self.data_labels.items(), key=lambda x: x[1]):
+                    actual_addr = len(self.code) + addr
+                    print(f"  {label:20s} = 0x{actual_addr:04x} (data+{addr})")
+            
+            if self.bss_labels:
+                print(f"\nBSS labels:")
+                for label, addr in sorted(self.bss_labels.items(), key=lambda x: x[1]):
+                    actual_addr = len(self.code) + len(self.data) + addr
+                    print(f"  {label:20s} = 0x{actual_addr:04x} (bss+{addr})")
 
 # -------------------------
 # Main
 # -------------------------
 if __name__ == "__main__":
     if len(sys.argv) < 3:
+        print(f"BinBows 95 BEXE Assembler v1.1")
         print(f"Usage: {sys.argv[0]} [options] <out.bexe> <in.asm> [more.asm...]")
         print(f"\nOptions:")
         print(f"  -v, --verbose    Enable verbose debug output")
+        print(f"\nFeatures:")
+        print(f"  • Full x86-style assembly syntax")
+        print(f"  • Memory operands: [reg], [reg+offset], [reg+reg+offset]")
+        print(f"  • Size directives: byte, word, dword, qword, db, dw, dd, dq")
+        print(f"  • Labels in .text, .data, and .bss sections")
+        print(f"  • Constants via EQU directive")
+        print(f"  • Macros with parameters")
+        print(f"  • File inclusion with %include")
+        print(f"  • Expression evaluation in immediates")
+        print(f"  • Character literals and escape sequences")
+        print(f"\nBeginner-friendly syntax:")
+        print(f"  • SET variable TO value  (converts to mov)")
+        print(f"  • PRINT message          (converts to syscall)")
+        print(f"  • EXIT                   (converts to hlt)")
+        print(f"  • GOTO label             (converts to jmp)")
+        print(f"  • IF_EQUAL label         (converts to je)")
+        print(f"  • Simple register names: a, b, c, d (map to rax, rbx, rcx, rdx)")
         print(f"\nExample:")
         print(f"  {sys.argv[0]} -v hello.bexe hello.asm")
         sys.exit(1)
@@ -866,6 +1015,9 @@ if __name__ == "__main__":
 
     output_file = args[0]
     input_files = args[1:]
+
+    print(f"BinBows 95 BEXE Assembler v1.1")
+    print(f"=" * 50)
 
     assembler = Assembler(verbose=verbose)
 
