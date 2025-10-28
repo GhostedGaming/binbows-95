@@ -133,8 +133,5 @@ void irq_handler(uint64_t irq_number) {
             break;
     }
 
-    if (irq_number >= 40) {
-        outb(0xA0, 0x20);
-    }
-    outb(0x20, 0x20);
+    PIC_sendEOI(irq_number);
 }

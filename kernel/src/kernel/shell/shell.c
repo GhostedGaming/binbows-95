@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <shell.h>
 #include <framebuffer.h>
 #include <stdarg.h>

@@ -1,4 +1,6 @@
 #include <ide.h>
+#include <stdint.h>
+#include <io.h>
 
 /* ============================================================================
  * LOW-LEVEL PORT I/O

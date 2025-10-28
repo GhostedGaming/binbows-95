@@ -1,11 +1,9 @@
+#include <stdint.h>
 #include <sata.h>
 #include <pci.h>
 #include <serial.h>
 #include <util.h>
 #include <mem.h>
-
-static HBA_MEM *s_abar = NULL;
-HBA_MEM *abar = NULL;
 
 static uint64_t get_phys_addr(void *virt) {
     if ((uint64_t)virt >= 0xffff800000000000) {
@@ -14,6 +12,9 @@ static uint64_t get_phys_addr(void *virt) {
         return kernel_virt_to_phys(virt);
     }
 }
+
+static HBA_MEM *s_abar = NULL;
+HBA_MEM *abar = NULL;
 
 static void stop_cmd(HBA_PORT *port) {
     // Per AHCI spec 1.3.1 section 10.3.1, to stop a port:

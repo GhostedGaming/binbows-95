@@ -23,6 +23,9 @@
 #include <shell.h>
 #include <sata.h>
 #include <ps2_keyboard.h>
+#include <elixir.h>
+#include <acpi.h>
+#include <apic.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>

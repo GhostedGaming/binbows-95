@@ -47,6 +47,7 @@ MNEMONIC_TO_OPCODE = {
     "nop":      0x90,
     
     # Beginner-friendly aliases
+    "open_file": 0x60, # Maps to open file syscall
     "print":    0x50,  # Maps to syscall
     "exit":     0x40,  # Maps to hlt
     "goto":     0x06,  # Maps to jmp
@@ -550,6 +551,11 @@ class Assembler:
         if line_lower.startswith('print '):
             rest = line[6:].strip()
             return f"mov rax, 1\nmov rbx, {rest}\nsyscall"
+        
+        if line_lower.startswith('open_file '):
+            drive = line[10:11].strip()
+            file_name = line[12:].strip()
+            return f"mov rax, 4\n mov rbx, {drive}\n mov rcx, {file_name}"
         
         # LET variable = value (alternative to SET)
         if '=' in line and not line_lower.startswith('mov'):

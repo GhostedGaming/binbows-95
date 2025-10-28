@@ -1,4 +1,5 @@
 #include <ide.h>
+#include <stdint.h>
 
 uint8_t ide_polling(uint8_t channel, uint8_t check) {
     for (int i = 0; i < 4; i++)

@@ -1,11 +1,6 @@
 #ifndef IDE_H
 #define IDE_H
 
-#include <io.h>
-#include <serial.h>
-#include <timer.h>
-#include <stddef.h>
-#include <stdint.h>
 
 /* ============================================================================
  * CONSTANTS
